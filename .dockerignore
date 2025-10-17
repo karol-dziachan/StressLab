@@ -1,0 +1,65 @@
+# .dockerignore for StressLab
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.cache
+
+# Build outputs
+bin/
+obj/
+out/
+publish/
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+
+# Logs
+logs/
+*.log
+
+# Reports
+reports/
+*.html
+*.json
+*.csv
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Node modules (if any)
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Docker files
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Scripts
+*.ps1
+*.sh
+
+# Backup files
+*.bak
+*.backup
+

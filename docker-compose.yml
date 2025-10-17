@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  stresslab-dev:
+    build: .
+    container_name: stresslab-dev
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - ./tests/StressLab.PerformanceTests/scenarios.json:/app/scenarios/scenarios.json:ro
+      - ./tests/StressLab.PerformanceTests/appsettings.json:/app/appsettings.json:ro
+      - ./tests/StressLab.PerformanceTests/appsettings.Development.json:/app/appsettings.Development.json:ro
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    command: ["--scenario", "API Performance Test", "--duration", "60", "--users", "10"]
+    networks:
+      - stresslab-network
+
+  stresslab-prod:
+    build: .
+    container_name: stresslab-prod
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - API_KEY=${API_KEY}
+      - DB_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - ./tests/StressLab.PerformanceTests/scenarios.production.json:/app/scenarios/scenarios.json:ro
+      - ./tests/StressLab.PerformanceTests/appsettings.json:/app/appsettings.json:ro
+      - ./tests/StressLab.PerformanceTests/appsettings.Production.json:/app/appsettings.Production.json:ro
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    command: ["--scenario", "Production API Load Test", "--duration", "300", "--users", "50"]
+    networks:
+      - stresslab-network
+
+  stresslab-custom:
+    build: .
+    container_name: stresslab-custom
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - ./tests/StressLab.PerformanceTests/scenarios.json:/app/scenarios/scenarios.json:ro
+      - ./tests/StressLab.PerformanceTests/appsettings.json:/app/appsettings.json:ro
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    command: ["--list-scenarios"]
+    networks:
+      - stresslab-network
+
+  # Optional: Add a web interface for monitoring
+  stresslab-web:
+    build: .
+    container_name: stresslab-web
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    volumes:
+      - ./tests/StressLab.PerformanceTests/scenarios.json:/app/scenarios/scenarios.json:ro
+      - ./tests/StressLab.PerformanceTests/appsettings.json:/app/appsettings.json:ro
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    command: ["--web-interface"]
+    networks:
+      - stresslab-network
+
+networks:
+  stresslab-network:
+    driver: bridge
+
+volumes:
+  logs:
+  reports:
+
