@@ -1,0 +1,503 @@
+{
+  "TestScenarios": [
+    {
+      "Name": "Production API Load Test",
+      "Description": "Production environment API load test with realistic traffic patterns",
+      "ExecutionMode": "Parallel",
+      "LoadSimulation": {
+        "Type": "ConstantRate",
+        "Rate": 100,
+        "DurationSeconds": 600,
+        "RampUpSeconds": 60,
+        "MaxConcurrentUsers": 200
+      },
+      "Steps": [
+        {
+          "Name": "User Authentication",
+          "Description": "Authenticate users with JWT tokens",
+          "Type": "HttpApi",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "POST",
+            "Url": "https://api.production.com/auth/login",
+            "Headers": {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            "Body": {
+              "username": "{{username}}",
+              "password": "{{password}}"
+            },
+            "Timeout": 30000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Get User Profile",
+          "Description": "Retrieve user profile data",
+          "Type": "HttpApi",
+          "Weight": 3,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "GET",
+            "Url": "https://api.production.com/users/profile",
+            "Headers": {
+              "Authorization": "Bearer {{token}}",
+              "Accept": "application/json"
+            },
+            "Timeout": 15000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Search Products",
+          "Description": "Search for products in catalog",
+          "Type": "HttpApi",
+          "Weight": 5,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "GET",
+            "Url": "https://api.production.com/products/search",
+            "Headers": {
+              "Accept": "application/json"
+            },
+            "Timeout": 10000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Add to Cart",
+          "Description": "Add product to shopping cart",
+          "Type": "HttpApi",
+          "Weight": 2,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "POST",
+            "Url": "https://api.production.com/cart/add",
+            "Headers": {
+              "Authorization": "Bearer {{token}}",
+              "Content-Type": "application/json"
+            },
+            "Body": {
+              "productId": "{{productId}}",
+              "quantity": 1
+            },
+            "Timeout": 20000,
+            "ExpectedStatusCode": 201
+          }
+        }
+      ],
+      "Settings": {
+        "ReportGeneration": true,
+        "MetricsCollection": true,
+        "ErrorThreshold": 2.0,
+        "MaxResponseTimeMs": 1000,
+        "VariableSubstitution": true
+      }
+    },
+    {
+      "Name": "Database Performance Test",
+      "Description": "Comprehensive database performance test with multiple procedures",
+      "ExecutionMode": "Parallel",
+      "LoadSimulation": {
+        "Type": "RampUp",
+        "Rate": 50,
+        "DurationSeconds": 300,
+        "RampUpSeconds": 30,
+        "MaxConcurrentUsers": 100
+      },
+      "Steps": [
+        {
+          "Name": "Get User Data",
+          "Description": "Retrieve comprehensive user data",
+          "Type": "SqlProcedure",
+          "Weight": 3,
+          "Enabled": true,
+          "Configuration": {
+            "ConnectionString": "Server=prod-db-server;Database=ProductionDB;Integrated Security=true;Connection Timeout=30;",
+            "ProcedureName": "sp_GetUserData",
+            "Parameters": {
+              "@UserId": "{{userId}}",
+              "@IncludeDetails": true,
+              "@IncludeHistory": false
+            },
+            "CommandTimeout": 30,
+            "ExpectedExecutionTime": 500
+          }
+        },
+        {
+          "Name": "Update User Status",
+          "Description": "Update user status and last activity",
+          "Type": "SqlProcedure",
+          "Weight": 2,
+          "Enabled": true,
+          "Configuration": {
+            "ConnectionString": "Server=prod-db-server;Database=ProductionDB;Integrated Security=true;Connection Timeout=30;",
+            "ProcedureName": "sp_UpdateUserStatus",
+            "Parameters": {
+              "@UserId": "{{userId}}",
+              "@Status": "Active",
+              "@LastActivity": "{{currentTime}}"
+            },
+            "CommandTimeout": 15,
+            "ExpectedExecutionTime": 200
+          }
+        },
+        {
+          "Name": "Process Order",
+          "Description": "Process customer order with inventory check",
+          "Type": "SqlProcedure",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "ConnectionString": "Server=prod-db-server;Database=ProductionDB;Integrated Security=true;Connection Timeout=30;",
+            "ProcedureName": "sp_ProcessOrder",
+            "Parameters": {
+              "@OrderId": "{{orderId}}",
+              "@UserId": "{{userId}}",
+              "@Items": "{{orderItems}}"
+            },
+            "CommandTimeout": 60,
+            "ExpectedExecutionTime": 2000
+          }
+        },
+        {
+          "Name": "Database Connection Test",
+          "Description": "Test database connectivity and response time",
+          "Type": "DatabaseConnection",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "ConnectionString": "Server=prod-db-server;Database=ProductionDB;Integrated Security=true;Connection Timeout=30;",
+            "Timeout": 5000
+          }
+        }
+      ],
+      "Settings": {
+        "MonitorDatabaseMetrics": true,
+        "TrackDeadlocks": true,
+        "ConnectionPooling": true,
+        "MaxResponseTimeMs": 3000,
+        "ErrorThreshold": 1.0
+      }
+    },
+    {
+      "Name": "System Impact Assessment",
+      "Description": "Comprehensive system impact test combining API and SQL operations",
+      "ExecutionMode": "Parallel",
+      "LoadSimulation": {
+        "Type": "Spike",
+        "Rate": 75,
+        "DurationSeconds": 480,
+        "RampUpSeconds": 60,
+        "MaxConcurrentUsers": 150,
+        "Parameters": {
+          "SpikeDuration": 120,
+          "SpikeRate": 150,
+          "SpikeInterval": 180
+        }
+      },
+      "Steps": [
+        {
+          "Name": "API Get Data",
+          "Description": "Retrieve data via API endpoint",
+          "Type": "HttpApi",
+          "Weight": 3,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "GET",
+            "Url": "https://api.production.com/data/{{dataType}}",
+            "Headers": {
+              "Authorization": "Bearer {{token}}",
+              "Accept": "application/json"
+            },
+            "Timeout": 20000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "SQL Process Data",
+          "Description": "Process data via SQL stored procedure",
+          "Type": "SqlProcedure",
+          "Weight": 2,
+          "Enabled": true,
+          "Configuration": {
+            "ConnectionString": "Server=prod-db-server;Database=ProductionDB;Integrated Security=true;Connection Timeout=30;",
+            "ProcedureName": "sp_ProcessData",
+            "Parameters": {
+              "@DataId": "{{dataId}}",
+              "@ProcessType": "Analysis",
+              "@UserId": "{{userId}}"
+            },
+            "CommandTimeout": 90,
+            "ExpectedExecutionTime": 3000
+          }
+        },
+        {
+          "Name": "API Update Status",
+          "Description": "Update processing status via API",
+          "Type": "HttpApi",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "PUT",
+            "Url": "https://api.production.com/data/{{dataId}}/status",
+            "Headers": {
+              "Authorization": "Bearer {{token}}",
+              "Content-Type": "application/json"
+            },
+            "Body": {
+              "status": "Processed",
+              "processedAt": "{{currentTime}}"
+            },
+            "Timeout": 15000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Wait Between Operations",
+          "Description": "Wait between API and SQL operations to simulate real usage",
+          "Type": "Wait",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "DurationMs": 200,
+            "RandomVariation": 100
+          }
+        }
+      ],
+      "Settings": {
+        "MeasureSystemImpact": true,
+        "CorrelateMetrics": true,
+        "GenerateImpactReport": true,
+        "MaxResponseTimeMs": 5000,
+        "ErrorThreshold": 3.0
+      }
+    },
+    {
+      "Name": "Sequential Workflow Test",
+      "Description": "Test sequential workflow with dependencies between steps",
+      "ExecutionMode": "Sequential",
+      "LoadSimulation": {
+        "Type": "Soak",
+        "Rate": 20,
+        "DurationSeconds": 1800,
+        "RampUpSeconds": 30,
+        "MaxConcurrentUsers": 50
+      },
+      "Steps": [
+        {
+          "Name": "Step 1: User Login",
+          "Description": "Authenticate user and get access token",
+          "Type": "HttpApi",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "POST",
+            "Url": "https://api.production.com/auth/login",
+            "Headers": {
+              "Content-Type": "application/json"
+            },
+            "Body": {
+              "username": "{{username}}",
+              "password": "{{password}}"
+            },
+            "Timeout": 30000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Step 2: Get User Profile",
+          "Description": "Retrieve user profile using token from step 1",
+          "Type": "HttpApi",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "GET",
+            "Url": "https://api.production.com/users/profile",
+            "Headers": {
+              "Authorization": "Bearer {{token}}",
+              "Accept": "application/json"
+            },
+            "Timeout": 15000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Step 3: Update Profile",
+          "Description": "Update user profile information",
+          "Type": "HttpApi",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "PUT",
+            "Url": "https://api.production.com/users/profile",
+            "Headers": {
+              "Authorization": "Bearer {{token}}",
+              "Content-Type": "application/json"
+            },
+            "Body": {
+              "firstName": "{{firstName}}",
+              "lastName": "{{lastName}}",
+              "email": "{{email}}"
+            },
+            "Timeout": 20000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Step 4: Save to Database",
+          "Description": "Save updated profile to database",
+          "Type": "SqlProcedure",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "ConnectionString": "Server=prod-db-server;Database=ProductionDB;Integrated Security=true;Connection Timeout=30;",
+            "ProcedureName": "sp_UpdateUserProfile",
+            "Parameters": {
+              "@UserId": "{{userId}}",
+              "@FirstName": "{{firstName}}",
+              "@LastName": "{{lastName}}",
+              "@Email": "{{email}}"
+            },
+            "CommandTimeout": 30,
+            "ExpectedExecutionTime": 1000
+          }
+        }
+      ],
+      "Settings": {
+        "VariableSubstitution": true,
+        "StepDependencies": true,
+        "FailureHandling": "StopOnError",
+        "MaxResponseTimeMs": 30000,
+        "ErrorThreshold": 5.0
+      }
+    },
+    {
+      "Name": "Weighted Load Distribution Test",
+      "Description": "Test with weighted step distribution simulating real user behavior",
+      "ExecutionMode": "Weighted",
+      "LoadSimulation": {
+        "Type": "ConstantRate",
+        "Rate": 60,
+        "DurationSeconds": 300,
+        "RampUpSeconds": 20,
+        "MaxConcurrentUsers": 120
+      },
+      "Steps": [
+        {
+          "Name": "Heavy Database Operation",
+          "Description": "Complex database operation with high resource usage",
+          "Type": "SqlProcedure",
+          "Weight": 1,
+          "Enabled": true,
+          "Configuration": {
+            "ConnectionString": "Server=prod-db-server;Database=ProductionDB;Integrated Security=true;Connection Timeout=30;",
+            "ProcedureName": "sp_ComplexAnalysis",
+            "Parameters": {
+              "@AnalysisType": "Comprehensive",
+              "@DateRange": "{{dateRange}}"
+            },
+            "CommandTimeout": 180,
+            "ExpectedExecutionTime": 10000
+          }
+        },
+        {
+          "Name": "Light API Operation",
+          "Description": "Simple API call with minimal processing",
+          "Type": "HttpApi",
+          "Weight": 8,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "GET",
+            "Url": "https://api.production.com/status",
+            "Headers": {
+              "Accept": "application/json"
+            },
+            "Timeout": 5000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Medium API Operation",
+          "Description": "Medium complexity API operation",
+          "Type": "HttpApi",
+          "Weight": 4,
+          "Enabled": true,
+          "Configuration": {
+            "Method": "POST",
+            "Url": "https://api.production.com/search",
+            "Headers": {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            "Body": {
+              "query": "{{searchQuery}}",
+              "filters": "{{filters}}"
+            },
+            "Timeout": 15000,
+            "ExpectedStatusCode": 200
+          }
+        },
+        {
+          "Name": "Database Query",
+          "Description": "Simple database query",
+          "Type": "SqlQuery",
+          "Weight": 3,
+          "Enabled": true,
+          "Configuration": {
+            "ConnectionString": "Server=prod-db-server;Database=ProductionDB;Integrated Security=true;Connection Timeout=30;",
+            "Query": "SELECT COUNT(*) FROM Users WHERE Status = 'Active'",
+            "CommandTimeout": 10,
+            "ExpectedExecutionTime": 100
+          }
+        }
+      ],
+      "Settings": {
+        "WeightBasedDistribution": true,
+        "DynamicWeightAdjustment": false,
+        "MaxResponseTimeMs": 15000,
+        "ErrorThreshold": 2.0
+      }
+    }
+  ],
+  "GlobalSettings": {
+    "DefaultTimeout": 30000,
+    "DefaultRetryCount": 3,
+    "DefaultRetryDelay": 1000,
+    "MetricsCollectionInterval": 1000,
+    "ReportGeneration": {
+      "Html": true,
+      "Json": true,
+      "Csv": true
+    },
+    "Logging": {
+      "Level": "Information",
+      "IncludeRequestDetails": true,
+      "IncludeResponseDetails": false
+    },
+    "PerformanceThresholds": {
+      "MaxResponseTimeMs": 5000,
+      "MaxErrorRatePercent": 2.0,
+      "MinThroughputPerSecond": 50
+    },
+    "Variables": {
+      "username": "testuser",
+      "password": "testpass123",
+      "userId": "12345",
+      "productId": "PROD-001",
+      "orderId": "ORD-001",
+      "dataId": "DATA-001",
+      "dataType": "analytics",
+      "firstName": "John",
+      "lastName": "Doe",
+      "email": "john.doe@example.com",
+      "searchQuery": "performance test",
+      "filters": "active",
+      "dateRange": "2024-01-01,2024-12-31",
+      "currentTime": "{{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}}"
+    }
+  }
+}
+
