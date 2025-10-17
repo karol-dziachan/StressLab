@@ -13,8 +13,6 @@ public class SystemMetricsService : ISystemMetricsService
     private readonly PerformanceCounter? _cpuCounter;
     private readonly PerformanceCounter? _memoryCounter;
     private readonly PerformanceCounter? _diskCounter;
-    private readonly PerformanceCounter? _networkSentCounter;
-    private readonly PerformanceCounter? _networkReceivedCounter;
     
     private bool _isMonitoring;
     private DateTime _monitoringStartTime;
@@ -32,19 +30,16 @@ public class SystemMetricsService : ISystemMetricsService
         {
             try
             {
-                // Initialize Windows performance counters
+                // Initialize Windows performance counters (only CPU and Memory to avoid network interface issues)
                 _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
                 _memoryCounter = new PerformanceCounter("Memory", "Available MBytes");
                 _diskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
-                _networkSentCounter = new PerformanceCounter("Network Interface", "Bytes Sent/sec", GetNetworkInterfaceName());
-                _networkReceivedCounter = new PerformanceCounter("Network Interface", "Bytes Received/sec", GetNetworkInterfaceName());
+                // Skip network counters on Windows to avoid interface name issues
                 
                 // Warm up counters
                 _cpuCounter.NextValue();
                 _memoryCounter.NextValue();
                 _diskCounter.NextValue();
-                _networkSentCounter.NextValue();
-                _networkReceivedCounter.NextValue();
             }
             catch (Exception ex)
             {
@@ -66,16 +61,9 @@ public class SystemMetricsService : ISystemMetricsService
         
         if (_isWindows)
         {
-            // Initialize Windows network counters
-            if (_networkSentCounter is not null)
-            {
-                _initialNetworkSent = (long)_networkSentCounter.NextValue();
-            }
-            
-            if (_networkReceivedCounter is not null)
-            {
-                _initialNetworkReceived = (long)_networkReceivedCounter.NextValue();
-            }
+            // Skip network counters on Windows to avoid interface issues
+            _initialNetworkSent = 0;
+            _initialNetworkReceived = 0;
         }
         else
         {
@@ -125,9 +113,9 @@ public class SystemMetricsService : ISystemMetricsService
                 memoryUsagePercent = totalMemoryBytes > 0 ? 
                     ((double)(totalMemoryBytes - availableMemoryBytes) / totalMemoryBytes) * 100 : 0;
                 
-                // Get network metrics
-                networkSent = (long)(_networkSentCounter?.NextValue() ?? 0);
-                networkReceived = (long)(_networkReceivedCounter?.NextValue() ?? 0);
+                // Skip network metrics on Windows to avoid interface issues
+                networkSent = 0;
+                networkReceived = 0;
             }
             else
             {
@@ -172,22 +160,6 @@ public class SystemMetricsService : ISystemMetricsService
         }
     }
 
-    private static string GetNetworkInterfaceName()
-    {
-        try
-        {
-            var networkInterfaces = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces();
-            var activeInterface = networkInterfaces.FirstOrDefault(ni => 
-                ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
-                ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback);
-            
-            return activeInterface?.Name ?? "Ethernet";
-        }
-        catch
-        {
-            return "Ethernet";
-        }
-    }
 
     public SystemMetrics GetMetrics()
     {
@@ -351,7 +323,5 @@ public class SystemMetricsService : ISystemMetricsService
         _cpuCounter?.Dispose();
         _memoryCounter?.Dispose();
         _diskCounter?.Dispose();
-        _networkSentCounter?.Dispose();
-        _networkReceivedCounter?.Dispose();
     }
 }
