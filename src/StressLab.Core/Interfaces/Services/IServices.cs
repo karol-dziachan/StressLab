@@ -71,6 +71,15 @@ public interface IReportService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Path to the generated report</returns>
     Task<string> GenerateCsvReportAsync(TestResult result, string outputPath, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Generates a combined HTML report for multiple test results
+    /// </summary>
+    /// <param name="results">Collection of test results</param>
+    /// <param name="outputPath">Output file path</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Path to the generated report</returns>
+    Task<string> GenerateCombinedHtmlReportAsync(IEnumerable<TestResult> results, string outputPath, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

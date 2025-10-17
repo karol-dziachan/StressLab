@@ -41,6 +41,29 @@ public class ReportService : IReportService
         }
     }
 
+    public async Task<string> GenerateCombinedHtmlReportAsync(IEnumerable<TestResult> results, string outputPath, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Generating combined HTML report for {ResultCount} test results", results.Count());
+
+        try
+        {
+            var htmlContent = GenerateCombinedHtmlContent(results);
+            var fileName = $"combined_test_report_{DateTime.UtcNow:yyyyMMdd_HHmmss}.html";
+            var fullPath = Path.Combine(outputPath, fileName);
+
+            await File.WriteAllTextAsync(fullPath, htmlContent, Encoding.UTF8, cancellationToken);
+
+            _logger.LogInformation("Combined HTML report generated successfully: {FilePath}", fullPath);
+
+            return fullPath;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate combined HTML report");
+            throw;
+        }
+    }
+
     public async Task<string> GenerateJsonReportAsync(TestResult result, string outputPath, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Generating JSON report for test result: {ResultId}", result.Id);
@@ -414,5 +437,576 @@ public class ReportService : IReportService
         }
         
         return csv.ToString();
+    }
+
+    private string GenerateCombinedHtmlContent(IEnumerable<TestResult> results)
+    {
+        var resultsList = results.ToList();
+        var totalRequests = resultsList.Sum(r => r.TotalRequests);
+        var totalSuccessfulRequests = resultsList.Sum(r => r.SuccessfulRequests);
+        var totalFailedRequests = resultsList.Sum(r => r.FailedRequests);
+        var averageResponseTimeMs = resultsList.Any() ? resultsList.Average(r => r.AverageResponseTimeMs) : 0;
+        var averageRequestsPerSecond = resultsList.Any() ? resultsList.Average(r => r.RequestsPerSecond) : 0;
+        var averageCpuUsage = resultsList.Any() ? resultsList.Average(r => r.CpuUsagePercent) : 0;
+        var averageMemoryUsage = resultsList.Any() ? resultsList.Average(r => r.MemoryUsagePercent) : 0;
+        var maxPerformanceImpact = resultsList.Any() ? resultsList.Max(r => r.PerformanceImpact) : Core.Enums.PerformanceImpactLevel.Minor;
+        var overallErrorRate = totalRequests > 0 ? (double)totalFailedRequests / totalRequests * 100 : 0;
+        var successfulTests = resultsList.Count(r => r.Status == Core.Enums.TestStatus.Completed && r.ErrorRatePercent <= r.MaxErrorRatePercent);
+        var failedTests = resultsList.Count - successfulTests;
+
+        var html = new StringBuilder();
+        
+        html.AppendLine("<!DOCTYPE html>");
+        html.AppendLine("<html lang=\"en\">");
+        html.AppendLine("<head>");
+        html.AppendLine("    <meta charset=\"UTF-8\">");
+        html.AppendLine("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+        html.AppendLine("    <title>Combined Performance Test Report</title>");
+        html.AppendLine("    <style>");
+        html.AppendLine(GetModernCssStyles());
+        html.AppendLine("    </style>");
+        html.AppendLine("    <script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>");
+        html.AppendLine("</head>");
+        html.AppendLine("<body>");
+        
+        // Header
+        html.AppendLine("    <div class=\"header\">");
+        html.AppendLine("        <div class=\"header-content\">");
+        html.AppendLine("            <h1>🚀 Combined Performance Test Report</h1>");
+        html.AppendLine("            <div class=\"header-stats\">");
+        html.AppendLine($"                <div class=\"header-stat\">");
+        html.AppendLine($"                    <span class=\"stat-number\">{resultsList.Count}</span>");
+        html.AppendLine($"                    <span class=\"stat-label\">Total Tests</span>");
+        html.AppendLine($"                </div>");
+        html.AppendLine($"                <div class=\"header-stat\">");
+        html.AppendLine($"                    <span class=\"stat-number\">{successfulTests}</span>");
+        html.AppendLine($"                    <span class=\"stat-label\">Successful</span>");
+        html.AppendLine($"                </div>");
+        html.AppendLine($"                <div class=\"header-stat\">");
+        html.AppendLine($"                    <span class=\"stat-number\">{failedTests}</span>");
+        html.AppendLine($"                    <span class=\"stat-label\">Failed</span>");
+        html.AppendLine($"                </div>");
+        html.AppendLine($"                <div class=\"header-stat\">");
+        html.AppendLine($"                    <span class=\"stat-number\">{totalRequests:N0}</span>");
+        html.AppendLine($"                    <span class=\"stat-label\">Total Requests</span>");
+        html.AppendLine($"                </div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <p class=\"report-date\">Generated on " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC</p>");
+        html.AppendLine("        </div>");
+        html.AppendLine("    </div>");
+        
+        // Overall Summary Cards
+        html.AppendLine("    <div class=\"summary-section\">");
+        html.AppendLine("        <h2>📊 Overall Summary</h2>");
+        html.AppendLine("        <div class=\"summary-cards\">");
+        html.AppendLine("            <div class=\"card success-card\">");
+        html.AppendLine("                <div class=\"card-icon\">✅</div>");
+        html.AppendLine("                <h3>Success Rate</h3>");
+        html.AppendLine($"                <div class=\"metric-value\">{(100 - overallErrorRate):F2}%</div>");
+        html.AppendLine($"                <div class=\"metric-detail\">{totalSuccessfulRequests:N0} / {totalRequests:N0}</div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <div class=\"card performance-card\">");
+        html.AppendLine("                <div class=\"card-icon\">⚡</div>");
+        html.AppendLine("                <h3>Avg Response Time</h3>");
+        html.AppendLine($"                <div class=\"metric-value\">{averageResponseTimeMs:F2} ms</div>");
+        html.AppendLine($"                <div class=\"metric-detail\">Across all tests</div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <div class=\"card throughput-card\">");
+        html.AppendLine("                <div class=\"card-icon\">📈</div>");
+        html.AppendLine("                <h3>Avg Throughput</h3>");
+        html.AppendLine($"                <div class=\"metric-value\">{averageRequestsPerSecond:F2}</div>");
+        html.AppendLine($"                <div class=\"metric-detail\">requests/second</div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <div class=\"card system-card\">");
+        html.AppendLine("                <div class=\"card-icon\">💻</div>");
+        html.AppendLine("                <h3>System Usage</h3>");
+        html.AppendLine($"                <div class=\"metric-value\">{averageCpuUsage:F1}% CPU</div>");
+        html.AppendLine($"                <div class=\"metric-detail\">{averageMemoryUsage:F1}% Memory</div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("        </div>");
+        html.AppendLine("    </div>");
+        
+        // Charts Section
+        html.AppendLine("    <div class=\"charts-section\">");
+        html.AppendLine("        <h2>📈 Performance Charts</h2>");
+        html.AppendLine("        <div class=\"charts-grid\">");
+        html.AppendLine("            <div class=\"chart-container\">");
+        html.AppendLine("                <h3>Response Time Distribution</h3>");
+        html.AppendLine("                <canvas id=\"responseTimeChart\"></canvas>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <div class=\"chart-container\">");
+        html.AppendLine("                <h3>Success Rate by Test</h3>");
+        html.AppendLine("                <canvas id=\"successRateChart\"></canvas>");
+        html.AppendLine("            </div>");
+        html.AppendLine("        </div>");
+        html.AppendLine("    </div>");
+        
+        // Individual Test Results
+        html.AppendLine("    <div class=\"tests-section\">");
+        html.AppendLine("        <h2>🧪 Individual Test Results</h2>");
+        html.AppendLine("        <div class=\"tests-grid\">");
+        
+        foreach (var result in resultsList)
+        {
+            var statusClass = result.Status == Core.Enums.TestStatus.Completed && result.ErrorRatePercent <= result.MaxErrorRatePercent ? "success" : "failed";
+            var statusIcon = statusClass == "success" ? "✅" : "❌";
+            
+            html.AppendLine($"            <div class=\"test-card {statusClass}\">");
+            html.AppendLine($"                <div class=\"test-header\">");
+            html.AppendLine($"                    <h3>{statusIcon} {result.TestName}</h3>");
+            html.AppendLine($"                    <span class=\"test-status\">{result.Status}</span>");
+            html.AppendLine($"                </div>");
+            html.AppendLine($"                <div class=\"test-metrics\">");
+            html.AppendLine($"                    <div class=\"test-metric\">");
+            html.AppendLine($"                        <span class=\"metric-label\">Requests</span>");
+            html.AppendLine($"                        <span class=\"metric-value\">{result.TotalRequests:N0}</span>");
+            html.AppendLine($"                    </div>");
+            html.AppendLine($"                    <div class=\"test-metric\">");
+            html.AppendLine($"                        <span class=\"metric-label\">Success Rate</span>");
+            html.AppendLine($"                        <span class=\"metric-value\">{(100 - result.ErrorRatePercent):F1}%</span>");
+            html.AppendLine($"                    </div>");
+            html.AppendLine($"                    <div class=\"test-metric\">");
+            html.AppendLine($"                        <span class=\"metric-label\">Avg Response</span>");
+            html.AppendLine($"                        <span class=\"metric-value\">{result.AverageResponseTimeMs:F0}ms</span>");
+            html.AppendLine($"                    </div>");
+            html.AppendLine($"                    <div class=\"test-metric\">");
+            html.AppendLine($"                        <span class=\"metric-label\">Throughput</span>");
+            html.AppendLine($"                        <span class=\"metric-value\">{result.RequestsPerSecond:F1}/s</span>");
+            html.AppendLine($"                    </div>");
+            html.AppendLine($"                </div>");
+            html.AppendLine($"                <div class=\"test-details\">");
+            html.AppendLine($"                    <div class=\"detail-row\">");
+            html.AppendLine($"                        <span>Duration:</span>");
+            html.AppendLine($"                        <span>{result.DurationSeconds?.ToString("F1") ?? "N/A"}s</span>");
+            html.AppendLine($"                    </div>");
+            html.AppendLine($"                    <div class=\"detail-row\">");
+            html.AppendLine($"                        <span>CPU Usage:</span>");
+            html.AppendLine($"                        <span>{result.CpuUsagePercent:F1}%</span>");
+            html.AppendLine($"                    </div>");
+            html.AppendLine($"                    <div class=\"detail-row\">");
+            html.AppendLine($"                        <span>Memory Usage:</span>");
+            html.AppendLine($"                        <span>{result.MemoryUsagePercent:F1}%</span>");
+            html.AppendLine($"                    </div>");
+            html.AppendLine($"                    <div class=\"detail-row\">");
+            html.AppendLine($"                        <span>Impact Level:</span>");
+            html.AppendLine($"                        <span class=\"impact-{result.PerformanceImpact.ToString().ToLower()}\">{result.PerformanceImpact}</span>");
+            html.AppendLine($"                    </div>");
+            html.AppendLine($"                </div>");
+            if (!string.IsNullOrEmpty(result.ErrorMessage))
+            {
+                html.AppendLine($"                <div class=\"test-error\">");
+                html.AppendLine($"                    <strong>Error:</strong> {result.ErrorMessage}");
+                html.AppendLine($"                </div>");
+            }
+            html.AppendLine($"            </div>");
+        }
+        
+        html.AppendLine("        </div>");
+        html.AppendLine("    </div>");
+        
+        // Footer
+        html.AppendLine("    <div class=\"footer\">");
+        html.AppendLine("        <p>Generated by StressLab Performance Testing Framework</p>");
+        html.AppendLine("        <p>Report generated on " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC</p>");
+        html.AppendLine("    </div>");
+        
+        // JavaScript for charts
+        html.AppendLine("    <script>");
+        html.AppendLine(GenerateChartScript(resultsList));
+        html.AppendLine("    </script>");
+        
+        html.AppendLine("</body>");
+        html.AppendLine("</html>");
+        
+        return html.ToString();
+    }
+
+    private string GetModernCssStyles()
+    {
+        return @"
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 40px 20px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-content h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+        }
+        
+        .header-stats {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+        
+        .header-stat {
+            text-align: center;
+        }
+        
+        .stat-number {
+            display: block;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            display: block;
+            font-size: 0.9rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .report-date {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .summary-section, .charts-section, .tests-section {
+            max-width: 1400px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        
+        .summary-section h2, .charts-section h2, .tests-section h2 {
+            color: white;
+            font-size: 2rem;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+        
+        .card h3 {
+            font-size: 1.2rem;
+            color: #666;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .success-card .metric-value { color: #4CAF50; }
+        .performance-card .metric-value { color: #FF9800; }
+        .throughput-card .metric-value { color: #2196F3; }
+        .system-card .metric-value { color: #9C27B0; }
+        
+        .metric-detail {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+        }
+        
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .chart-container h3 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .tests-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+        }
+        
+        .test-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .test-card:hover {
+            transform: translateY(-3px);
+        }
+        
+        .test-card.success {
+            border-left: 5px solid #4CAF50;
+        }
+        
+        .test-card.failed {
+            border-left: 5px solid #f44336;
+        }
+        
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .test-header h3 {
+            font-size: 1.3rem;
+            color: #333;
+        }
+        
+        .test-status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .test-card.success .test-status {
+            background: #E8F5E8;
+            color: #4CAF50;
+        }
+        
+        .test-card.failed .test-status {
+            background: #FFEBEE;
+            color: #f44336;
+        }
+        
+        .test-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .test-metric {
+            text-align: center;
+        }
+        
+        .test-metric .metric-label {
+            display: block;
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .test-metric .metric-value {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .test-details {
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .detail-row span:first-child {
+            color: #666;
+        }
+        
+        .detail-row span:last-child {
+            font-weight: 600;
+        }
+        
+        .impact-minor { color: #4CAF50; }
+        .impact-moderate { color: #FF9800; }
+        .impact-major { color: #FF5722; }
+        .impact-critical { color: #f44336; }
+        
+        .test-error {
+            background: #FFEBEE;
+            color: #f44336;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        
+        .footer {
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            text-align: center;
+            padding: 30px;
+            margin-top: 60px;
+        }
+        
+        .footer p {
+            margin: 5px 0;
+        }
+        
+        @media (max-width: 768px) {
+            .header-content h1 {
+                font-size: 2rem;
+            }
+            
+            .header-stats {
+                gap: 20px;
+            }
+            
+            .stat-number {
+                font-size: 2rem;
+            }
+            
+            .summary-cards, .tests-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .test-metrics {
+                grid-template-columns: 1fr;
+            }
+        }
+        ";
+    }
+
+    private string GenerateChartScript(IEnumerable<TestResult> results)
+    {
+        var resultsList = results.ToList();
+        var testNames = resultsList.Select(r => r.TestName).ToArray();
+        var responseTimes = resultsList.Select(r => r.AverageResponseTimeMs).ToArray();
+        var successRates = resultsList.Select(r => 100 - r.ErrorRatePercent).ToArray();
+        
+        return $@"
+        // Response Time Chart
+        const responseTimeCtx = document.getElementById('responseTimeChart').getContext('2d');
+        new Chart(responseTimeCtx, {{
+            type: 'bar',
+            data: {{
+                labels: {JsonSerializer.Serialize(testNames)},
+                datasets: [{{
+                    label: 'Average Response Time (ms)',
+                    data: {JsonSerializer.Serialize(responseTimes)},
+                    backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                    borderColor: 'rgba(102, 126, 234, 1)',
+                    borderWidth: 2,
+                    borderRadius: 8,
+                    borderSkipped: false,
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                plugins: {{
+                    legend: {{
+                        display: false
+                    }}
+                }},
+                scales: {{
+                    y: {{
+                        beginAtZero: true,
+                        grid: {{
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }}
+                    }},
+                    x: {{
+                        grid: {{
+                            display: false
+                        }}
+                    }}
+                }}
+            }}
+        }});
+        
+        // Success Rate Chart
+        const successRateCtx = document.getElementById('successRateChart').getContext('2d');
+        new Chart(successRateCtx, {{
+            type: 'doughnut',
+            data: {{
+                labels: {JsonSerializer.Serialize(testNames)},
+                datasets: [{{
+                    data: {JsonSerializer.Serialize(successRates)},
+                    backgroundColor: [
+                        '#4CAF50',
+                        '#2196F3',
+                        '#FF9800',
+                        '#9C27B0',
+                        '#f44336',
+                        '#00BCD4',
+                        '#8BC34A',
+                        '#FFC107'
+                    ],
+                    borderWidth: 0
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                plugins: {{
+                    legend: {{
+                        position: 'bottom',
+                        labels: {{
+                            padding: 20,
+                            usePointStyle: true
+                        }}
+                    }}
+                }}
+            }}
+        }});
+        ";
     }
 }
