@@ -55,6 +55,7 @@ public class Program
             var scenarioService = host.Services.GetRequiredService<IScenarioConfigurationService>();
             var scenarioExecutionService = host.Services.GetRequiredService<IScenarioExecutionService>();
             var reportService = host.Services.GetRequiredService<IReportService>();
+            var performanceTestService = host.Services.GetRequiredService<IPerformanceTestService>();
 
             // Parse command line arguments
             var testConfig = ParseCommandLineArguments(args, configuration);
@@ -69,6 +70,14 @@ public class Program
             else
             {
                 logger.LogWarning("Scenarios file not found: {ScenariosPath}", scenariosPath);
+            }
+
+            // Configure HttpClient if configuration is available
+            var httpClientConfig = scenarioService.GetHttpClientConfiguration();
+            if (httpClientConfig != null)
+            {
+                logger.LogInformation("Configuring HttpClient with custom settings");
+                performanceTestService.ConfigureHttpClient(httpClientConfig);
             }
 
             // Execute tests based on configuration

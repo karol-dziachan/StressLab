@@ -1,4 +1,22 @@
 {
+  "HttpClientConfiguration": {
+    "DefaultHeaders": {
+      "Accept": "application/json",
+      "User-Agent": "StressLab/1.0",
+      "X-Test-Session": "{{sessionId}}",
+      "X-Test-Timestamp": "{{timestamp}}"
+    },
+    "TimeoutMs": 30000,
+    "UserAgent": "StressLab Performance Testing Framework/1.0",
+    "FollowRedirects": true,
+    "MaxRedirects": 5,
+    "UseCompression": true,
+    "ConnectionPool": {
+      "MaxConnectionsPerServer": 20,
+      "ConnectionLifetimeSeconds": 300,
+      "IdleConnectionTimeoutSeconds": 100
+    }
+  },
   "TestScenarios": [
     {
       "Name": "Simple API Test",

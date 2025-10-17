@@ -15,6 +15,7 @@ public class ScenarioConfigurationService : IScenarioConfigurationService
     private readonly ILogger<ScenarioConfigurationService> _logger;
     private readonly ScenarioConfigurationOptions _options;
     private readonly Dictionary<string, TestScenario> _scenarios = new();
+    private HttpClientConfiguration? _httpClientConfiguration;
 
     public ScenarioConfigurationService(
         ILogger<ScenarioConfigurationService> logger,
@@ -49,6 +50,14 @@ public class ScenarioConfigurationService : IScenarioConfigurationService
 
             _scenarios.Clear();
 
+            // Parse HttpClient configuration if present
+            _httpClientConfiguration = scenariosConfig.HttpClientConfiguration;
+            if (_httpClientConfiguration != null)
+            {
+                _logger.LogInformation("Loaded HttpClient configuration with {HeaderCount} default headers", 
+                    _httpClientConfiguration.DefaultHeaders.Count);
+            }
+
             foreach (var scenarioConfig in scenariosConfig.TestScenarios)
             {
                 var scenario = ParseScenario(scenarioConfig);
@@ -79,6 +88,11 @@ public class ScenarioConfigurationService : IScenarioConfigurationService
     public IEnumerable<string> GetScenarioNames()
     {
         return _scenarios.Keys;
+    }
+
+    public HttpClientConfiguration? GetHttpClientConfiguration()
+    {
+        return _httpClientConfiguration;
     }
 
     private TestScenario ParseScenario(ScenarioConfiguration scenarioConfig)
@@ -180,6 +194,7 @@ public class ScenarioConfigurationOptions
 /// </summary>
 public class ScenariosConfiguration
 {
+    public HttpClientConfiguration? HttpClientConfiguration { get; set; }
     public List<ScenarioConfiguration> TestScenarios { get; set; } = new();
     public GlobalSettings? GlobalSettings { get; set; }
 }

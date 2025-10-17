@@ -32,6 +32,7 @@ public static class DependencyInjectionExtensions
         services.AddSingleton<ISystemMetricsService, SystemMetricsService>();
         services.AddSingleton<IScenarioConfigurationService, ScenarioConfigurationService>();
         services.AddSingleton<IScenarioExecutionService, ScenarioExecutionService>();
+        services.AddSingleton<IHttpClientConfigurationService, HttpClientConfigurationService>();
         
         // Register configuration options
         services.Configure<ScenarioConfigurationOptions>(options =>

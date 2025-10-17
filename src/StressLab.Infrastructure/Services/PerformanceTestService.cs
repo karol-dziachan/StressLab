@@ -20,15 +20,18 @@ public class PerformanceTestService : IPerformanceTestService
     private readonly ILogger<PerformanceTestService> _logger;
     private readonly HttpClient _httpClient;
     private readonly ISystemMetricsService _systemMetricsService;
+    private readonly IHttpClientConfigurationService _httpClientConfigService;
 
     public PerformanceTestService(
         ILogger<PerformanceTestService> logger,
         HttpClient httpClient,
-        ISystemMetricsService systemMetricsService)
+        ISystemMetricsService systemMetricsService,
+        IHttpClientConfigurationService httpClientConfigService)
     {
         _logger = logger;
         _httpClient = httpClient;
         _systemMetricsService = systemMetricsService;
+        _httpClientConfigService = httpClientConfigService;
     }
 
     public async Task<TestResult> ExecuteTestAsync(TestConfiguration configuration, CancellationToken cancellationToken = default)
@@ -60,6 +63,16 @@ public class PerformanceTestService : IPerformanceTestService
         {
             await _systemMetricsService.StopMonitoringAsync();
         }
+    }
+
+    /// <summary>
+    /// Configures HttpClient with custom settings for performance tests
+    /// </summary>
+    /// <param name="configuration">HttpClient configuration</param>
+    public void ConfigureHttpClient(HttpClientConfiguration configuration)
+    {
+        _logger.LogInformation("Configuring HttpClient for performance tests");
+        _httpClientConfigService.ConfigureHttpClient(_httpClient, configuration);
     }
 
     public async Task<TestResult> ExecuteApiTestAsync(TestConfiguration configuration, CancellationToken cancellationToken = default)

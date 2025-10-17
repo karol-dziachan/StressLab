@@ -38,6 +38,12 @@ public interface IPerformanceTestService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Test result</returns>
     Task<TestResult> ExecuteCombinedTestAsync(TestConfiguration configuration, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Configures HttpClient with custom settings for performance tests
+    /// </summary>
+    /// <param name="configuration">HttpClient configuration</param>
+    void ConfigureHttpClient(HttpClientConfiguration configuration);
 }
 
 /// <summary>
@@ -83,6 +89,26 @@ public interface IReportService
 }
 
 /// <summary>
+/// Service interface for configuring HttpClient used in performance tests
+/// </summary>
+public interface IHttpClientConfigurationService
+{
+    /// <summary>
+    /// Configures HttpClient with the provided configuration
+    /// </summary>
+    /// <param name="httpClient">HttpClient instance to configure</param>
+    /// <param name="configuration">Configuration to apply</param>
+    void ConfigureHttpClient(HttpClient httpClient, HttpClientConfiguration configuration);
+
+    /// <summary>
+    /// Creates a configured HttpClient instance
+    /// </summary>
+    /// <param name="configuration">Configuration to apply</param>
+    /// <returns>Configured HttpClient instance</returns>
+    HttpClient CreateConfiguredHttpClient(HttpClientConfiguration configuration);
+}
+
+/// <summary>
 /// Service interface for managing test scenarios from JSON configuration
 /// </summary>
 public interface IScenarioConfigurationService
@@ -113,6 +139,12 @@ public interface IScenarioConfigurationService
     /// </summary>
     /// <returns>Collection of scenario names</returns>
     IEnumerable<string> GetScenarioNames();
+    
+    /// <summary>
+    /// Gets HttpClient configuration from scenarios file
+    /// </summary>
+    /// <returns>HttpClient configuration or null if not configured</returns>
+    HttpClientConfiguration? GetHttpClientConfiguration();
 }
 
 /// <summary>
