@@ -335,6 +335,7 @@ reports/
 *.log
 *.html
 
+
 *.csv
 
 # Environment specific files

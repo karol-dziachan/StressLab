@@ -21,30 +21,39 @@ public class SystemMetricsService : ISystemMetricsService
     private long _initialNetworkSent;
     private long _initialNetworkReceived;
     private SystemMetrics _currentMetrics = new SystemMetrics();
+    private readonly bool _isWindows;
 
     public SystemMetricsService(ILogger<SystemMetricsService> logger)
     {
         _logger = logger;
+        _isWindows = Environment.OSVersion.Platform == PlatformID.Win32NT;
         
-        try
+        if (_isWindows)
         {
-            // Initialize performance counters
-            _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-            _memoryCounter = new PerformanceCounter("Memory", "Available MBytes");
-            _diskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
-            _networkSentCounter = new PerformanceCounter("Network Interface", "Bytes Sent/sec", GetNetworkInterfaceName());
-            _networkReceivedCounter = new PerformanceCounter("Network Interface", "Bytes Received/sec", GetNetworkInterfaceName());
-            
-            // Warm up counters
-            _cpuCounter.NextValue();
-            _memoryCounter.NextValue();
-            _diskCounter.NextValue();
-            _networkSentCounter.NextValue();
-            _networkReceivedCounter.NextValue();
+            try
+            {
+                // Initialize Windows performance counters
+                _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+                _memoryCounter = new PerformanceCounter("Memory", "Available MBytes");
+                _diskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
+                _networkSentCounter = new PerformanceCounter("Network Interface", "Bytes Sent/sec", GetNetworkInterfaceName());
+                _networkReceivedCounter = new PerformanceCounter("Network Interface", "Bytes Received/sec", GetNetworkInterfaceName());
+                
+                // Warm up counters
+                _cpuCounter.NextValue();
+                _memoryCounter.NextValue();
+                _diskCounter.NextValue();
+                _networkSentCounter.NextValue();
+                _networkReceivedCounter.NextValue();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to initialize Windows performance counters. Some metrics may not be available.");
+            }
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogWarning(ex, "Failed to initialize some performance counters. Some metrics may not be available.");
+            _logger.LogInformation("Running on Linux - using /proc filesystem for system metrics");
         }
     }
 
@@ -55,15 +64,24 @@ public class SystemMetricsService : ISystemMetricsService
         _isMonitoring = true;
         _monitoringStartTime = DateTime.UtcNow;
         
-        // Initialize network counters
-        if (_networkSentCounter is not null)
+        if (_isWindows)
         {
-            _initialNetworkSent = (long)_networkSentCounter.NextValue();
+            // Initialize Windows network counters
+            if (_networkSentCounter is not null)
+            {
+                _initialNetworkSent = (long)_networkSentCounter.NextValue();
+            }
+            
+            if (_networkReceivedCounter is not null)
+            {
+                _initialNetworkReceived = (long)_networkReceivedCounter.NextValue();
+            }
         }
-        
-        if (_networkReceivedCounter is not null)
+        else
         {
-            _initialNetworkReceived = (long)_networkReceivedCounter.NextValue();
+            // Initialize Linux network counters
+            _initialNetworkSent = GetLinuxNetworkBytesSent();
+            _initialNetworkReceived = GetLinuxNetworkBytesReceived();
         }
         
         await Task.CompletedTask;
@@ -86,31 +104,55 @@ public class SystemMetricsService : ISystemMetricsService
     {
         try
         {
-            var cpuUsage = _cpuCounter?.NextValue() ?? 0;
-            var availableMemoryMB = _memoryCounter?.NextValue() ?? 0;
-            var diskUsage = _diskCounter?.NextValue() ?? 0;
+            double cpuUsage = 0;
+            double memoryUsagePercent = 0;
+            long availableMemoryBytes = 0;
+            long totalMemoryBytes = 0;
+            double diskUsage = 0;
+            long networkSent = 0;
+            long networkReceived = 0;
             
-            // Get total memory
-            var totalMemoryBytes = GC.GetTotalMemory(false);
-            var availableMemoryBytes = (long)(availableMemoryMB * 1024 * 1024);
-            var memoryUsagePercent = totalMemoryBytes > 0 ? 
-                ((double)(totalMemoryBytes - availableMemoryBytes) / totalMemoryBytes) * 100 : 0;
+            if (_isWindows)
+            {
+                // Windows implementation using Performance Counters
+                cpuUsage = _cpuCounter?.NextValue() ?? 0;
+                var availableMemoryMB = _memoryCounter?.NextValue() ?? 0;
+                diskUsage = _diskCounter?.NextValue() ?? 0;
+                
+                // Get total memory
+                totalMemoryBytes = GC.GetTotalMemory(false);
+                availableMemoryBytes = (long)(availableMemoryMB * 1024 * 1024);
+                memoryUsagePercent = totalMemoryBytes > 0 ? 
+                    ((double)(totalMemoryBytes - availableMemoryBytes) / totalMemoryBytes) * 100 : 0;
+                
+                // Get network metrics
+                networkSent = (long)(_networkSentCounter?.NextValue() ?? 0);
+                networkReceived = (long)(_networkReceivedCounter?.NextValue() ?? 0);
+            }
+            else
+            {
+                // Linux implementation using /proc filesystem
+                cpuUsage = GetLinuxCpuUsage();
+                (memoryUsagePercent, availableMemoryBytes, totalMemoryBytes) = GetLinuxMemoryUsage();
+                diskUsage = GetLinuxDiskUsage();
+                networkSent = GetLinuxNetworkBytesSent();
+                networkReceived = GetLinuxNetworkBytesReceived();
+            }
             
-            // Get network metrics
-            var networkSent = _networkSentCounter?.NextValue() ?? 0;
-            var networkReceived = _networkReceivedCounter?.NextValue() ?? 0;
-            
-            return new SystemMetrics
+            var metrics = new SystemMetrics
             {
                 CpuUsagePercent = Math.Round(cpuUsage, 2),
                 MemoryUsagePercent = Math.Round(memoryUsagePercent, 2),
                 AvailableMemoryBytes = availableMemoryBytes,
                 TotalMemoryBytes = totalMemoryBytes,
                 DiskUsagePercent = Math.Round(diskUsage, 2),
-                NetworkBytesSent = (long)networkSent,
-                NetworkBytesReceived = (long)networkReceived,
+                NetworkBytesSent = networkSent,
+                NetworkBytesReceived = networkReceived,
                 Timestamp = DateTime.UtcNow
             };
+            
+            _currentMetrics = metrics;
+            return metrics;
         }
         catch (Exception ex)
         {
@@ -150,6 +192,158 @@ public class SystemMetricsService : ISystemMetricsService
     public SystemMetrics GetMetrics()
     {
         return _currentMetrics;
+    }
+
+    // Linux-specific methods using /proc filesystem
+    private double GetLinuxCpuUsage()
+    {
+        try
+        {
+            var stat1 = File.ReadAllText("/proc/stat");
+            var lines1 = stat1.Split('\n');
+            var cpuLine1 = lines1[0].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            
+            var idle1 = long.Parse(cpuLine1[4]);
+            var total1 = cpuLine1.Skip(1).Take(7).Sum(x => long.Parse(x));
+            
+            Thread.Sleep(100); // Wait 100ms
+            
+            var stat2 = File.ReadAllText("/proc/stat");
+            var lines2 = stat2.Split('\n');
+            var cpuLine2 = lines2[0].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            
+            var idle2 = long.Parse(cpuLine2[4]);
+            var total2 = cpuLine2.Skip(1).Take(7).Sum(x => long.Parse(x));
+            
+            var idleDiff = idle2 - idle1;
+            var totalDiff = total2 - total1;
+            
+            if (totalDiff == 0) return 0;
+            
+            return 100.0 * (1.0 - (double)idleDiff / totalDiff);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private (double usagePercent, long availableBytes, long totalBytes) GetLinuxMemoryUsage()
+    {
+        try
+        {
+            var memInfo = File.ReadAllText("/proc/meminfo");
+            var lines = memInfo.Split('\n');
+            
+            long totalMem = 0;
+            long availableMem = 0;
+            
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("MemTotal:"))
+                {
+                    var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    totalMem = long.Parse(parts[1]) * 1024; // Convert from KB to bytes
+                }
+                else if (line.StartsWith("MemAvailable:"))
+                {
+                    var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    availableMem = long.Parse(parts[1]) * 1024; // Convert from KB to bytes
+                }
+            }
+            
+            if (totalMem == 0) return (0, 0, 0);
+            
+            var usedMem = totalMem - availableMem;
+            var usagePercent = (double)usedMem / totalMem * 100;
+            
+            return (usagePercent, availableMem, totalMem);
+        }
+        catch
+        {
+            return (0, 0, 0);
+        }
+    }
+
+    private double GetLinuxDiskUsage()
+    {
+        try
+        {
+            var dfOutput = File.ReadAllText("/proc/diskstats");
+            // Simplified disk usage - in real implementation you'd parse /proc/diskstats
+            // For now, return 0 as disk I/O monitoring is complex
+            return 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private long GetLinuxNetworkBytesSent()
+    {
+        try
+        {
+            var netDev = File.ReadAllText("/proc/net/dev");
+            var lines = netDev.Split('\n');
+            
+            long totalSent = 0;
+            foreach (var line in lines.Skip(2)) // Skip header lines
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                
+                var parts = line.Split(':', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) continue;
+                
+                var interfaceName = parts[0].Trim();
+                if (interfaceName == "lo") continue; // Skip loopback
+                
+                var stats = parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (stats.Length >= 9)
+                {
+                    totalSent += long.Parse(stats[8]); // bytes sent
+                }
+            }
+            
+            return totalSent;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private long GetLinuxNetworkBytesReceived()
+    {
+        try
+        {
+            var netDev = File.ReadAllText("/proc/net/dev");
+            var lines = netDev.Split('\n');
+            
+            long totalReceived = 0;
+            foreach (var line in lines.Skip(2)) // Skip header lines
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                
+                var parts = line.Split(':', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) continue;
+                
+                var interfaceName = parts[0].Trim();
+                if (interfaceName == "lo") continue; // Skip loopback
+                
+                var stats = parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (stats.Length >= 1)
+                {
+                    totalReceived += long.Parse(stats[0]); // bytes received
+                }
+            }
+            
+            return totalReceived;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     public void Dispose()
