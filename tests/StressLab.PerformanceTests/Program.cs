@@ -71,56 +71,117 @@ public class Program
                 logger.LogWarning("Scenarios file not found: {ScenariosPath}", scenariosPath);
             }
 
-            // Execute test based on configuration
-            TestResult result;
+            // Execute tests based on configuration
+            var allResults = new List<TestResult>();
             
             if (!string.IsNullOrEmpty(testConfig.ScenarioName))
             {
-                // Execute scenario by name
-                logger.LogInformation("Executing scenario: {ScenarioName}", testConfig.ScenarioName);
-                result = await scenarioExecutionService.ExecuteScenarioByNameAsync(testConfig.ScenarioName);
+                // Execute single scenario by name
+                logger.LogInformation("Executing single scenario: {ScenarioName}", testConfig.ScenarioName);
+                var result = await scenarioExecutionService.ExecuteScenarioByNameAsync(testConfig.ScenarioName);
+                allResults.Add(result);
             }
             else
             {
-                // Execute legacy test configuration
-                logger.LogInformation("Executing legacy test: {TestName}", testConfig.Name);
+                // Execute all scenarios from JSON
+                logger.LogInformation("Executing all scenarios from scenarios.json");
                 
-                var mediator = host.Services.GetRequiredService<MediatR.IMediator>();
+                var scenarios = scenarioService.GetAllScenarios();
+                logger.LogInformation("Found {ScenarioCount} scenarios to execute", scenarios.Count());
                 
-                // Create test configuration first
-                var createCommand = new CreateTestConfigurationCommand
+                foreach (var scenario in scenarios)
                 {
-                    Configuration = testConfig
-                };
-                
-                var createdConfig = await mediator.Send(createCommand);
-
-                // Execute the test
-                var executeCommand = new ExecutePerformanceTestCommand
-                {
-                    ConfigurationId = createdConfig.Id
-                };
-                
-                result = await mediator.Send(executeCommand);
+                    try
+                    {
+                        logger.LogInformation("Executing scenario: {ScenarioName}", scenario.Name);
+                        var result = await scenarioExecutionService.ExecuteScenarioByNameAsync(scenario.Name);
+                        allResults.Add(result);
+                        
+                        logger.LogInformation("Scenario {ScenarioName} completed successfully. Result ID: {ResultId}", 
+                            scenario.Name, result.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to execute scenario: {ScenarioName}", scenario.Name);
+                        
+                        // Create a failed result for this scenario
+                        var failedResult = new TestResult
+                        {
+                            Id = Guid.NewGuid(),
+                            TestConfigurationId = Guid.NewGuid(),
+                            TestName = scenario.Name,
+                            Description = $"Failed scenario: {scenario.Name}",
+                            Status = Core.Enums.TestStatus.Failed,
+                            StartTime = DateTimeOffset.UtcNow,
+                            EndTime = DateTimeOffset.UtcNow,
+                            TotalRequests = 0,
+                            SuccessfulRequests = 0,
+                            FailedRequests = 0,
+                            ErrorRatePercent = 100.0,
+                            AverageResponseTimeMs = 0,
+                            MinResponseTimeMs = 0,
+                            MaxResponseTimeMs = 0,
+                            P95ResponseTimeMs = 0,
+                            P99ResponseTimeMs = 0,
+                            RequestsPerSecond = 0,
+                            CpuUsagePercent = 0,
+                            MemoryUsagePercent = 0,
+                            PerformanceImpact = Core.Enums.PerformanceImpactLevel.Critical,
+                            ErrorMessage = ex.Message,
+                            MaxErrorRatePercent = 5.0,
+                            CreatedAt = DateTimeOffset.UtcNow
+                        };
+                        allResults.Add(failedResult);
+                    }
+                }
             }
 
-            logger.LogInformation("Test completed successfully. Result ID: {ResultId}", result.Id);
+            logger.LogInformation("All tests completed. Total results: {ResultCount}", allResults.Count);
 
-            // Generate reports
+            // Generate reports for all results
             var reportsPath = Path.Combine(Directory.GetCurrentDirectory(), "reports");
             Directory.CreateDirectory(reportsPath);
 
-            var htmlReportPath = await reportService.GenerateHtmlReportAsync(result, reportsPath);
-            var jsonReportPath = await reportService.GenerateJsonReportAsync(result, reportsPath);
-            var csvReportPath = await reportService.GenerateCsvReportAsync(result, reportsPath);
+            var reportPaths = new List<(string Type, string Path)>();
+            
+            // Generate individual reports for each test
+            foreach (var result in allResults)
+            {
+                try
+                {
+                    var htmlReportPath = await reportService.GenerateHtmlReportAsync(result, reportsPath);
+                    var jsonReportPath = await reportService.GenerateJsonReportAsync(result, reportsPath);
+                    var csvReportPath = await reportService.GenerateCsvReportAsync(result, reportsPath);
+                    
+                    reportPaths.Add(("HTML", htmlReportPath));
+                    reportPaths.Add(("JSON", jsonReportPath));
+                    reportPaths.Add(("CSV", csvReportPath));
+                    
+                    logger.LogInformation("Reports generated for {TestName}:", result.TestName);
+                    logger.LogInformation("  HTML: {HtmlReport}", htmlReportPath);
+                    logger.LogInformation("  JSON: {JsonReport}", jsonReportPath);
+                    logger.LogInformation("  CSV: {CsvReport}", csvReportPath);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to generate reports for test: {TestName}", result.TestName);
+                }
+            }
 
-            logger.LogInformation("Reports generated:");
-            logger.LogInformation("HTML: {HtmlReport}", htmlReportPath);
-            logger.LogInformation("JSON: {JsonReport}", jsonReportPath);
-            logger.LogInformation("CSV: {CsvReport}", csvReportPath);
+            // Generate combined HTML report
+            try
+            {
+                var combinedHtmlReportPath = await reportService.GenerateCombinedHtmlReportAsync(allResults, reportsPath);
+                reportPaths.Add(("Combined HTML", combinedHtmlReportPath));
+                logger.LogInformation("Combined HTML report generated: {CombinedReport}", combinedHtmlReportPath);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to generate combined HTML report");
+            }
 
             // Output results for TeamCity
-            OutputTeamCityResults(result);
+            OutputTeamCityResults(allResults);
 
             Log.Information("StressLab Performance Tests completed successfully");
             return 0;
@@ -138,11 +199,11 @@ public class Program
 
     private static TestConfigurationDto ParseCommandLineArguments(string[] args, IConfiguration configuration)
     {
-        // Default configuration
+        // Default configuration - no scenario by default to run all scenarios
         var testConfig = new TestConfigurationDto
         {
-            Name = "Default Performance Test",
-            Description = "Performance test executed from command line",
+            Name = "All Scenarios Test",
+            Description = "Execute all scenarios from scenarios.json",
             TestType = TestType.Api,
             DurationSeconds = 60,
             ConcurrentUsers = 10,
@@ -151,7 +212,7 @@ public class Program
             ApiMethod = "GET",
             ExpectedResponseTimeMs = 1000,
             MaxErrorRatePercent = 5.0,
-            ScenarioName = null
+            ScenarioName = null  // null means run all scenarios
         };
 
         // Override with configuration values
@@ -213,39 +274,55 @@ public class Program
         return testConfig;
     }
 
-    private static void OutputTeamCityResults(Core.Entities.TestResult result)
+    private static void OutputTeamCityResults(List<Core.Entities.TestResult> results)
     {
-        // Output TeamCity service messages for build statistics
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.TotalRequests' value='{result.TotalRequests}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.SuccessfulRequests' value='{result.SuccessfulRequests}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.FailedRequests' value='{result.FailedRequests}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.ErrorRatePercent' value='{result.ErrorRatePercent:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageResponseTimeMs' value='{result.AverageResponseTimeMs:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.P95ResponseTimeMs' value='{result.P95ResponseTimeMs:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.P99ResponseTimeMs' value='{result.P99ResponseTimeMs:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.RequestsPerSecond' value='{result.RequestsPerSecond:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.CpuUsagePercent' value='{result.CpuUsagePercent:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.MemoryUsagePercent' value='{result.MemoryUsagePercent:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.PerformanceImpact' value='{result.PerformanceImpact}']");
+        var totalRequests = results.Sum(r => r.TotalRequests);
+        var totalSuccessfulRequests = results.Sum(r => r.SuccessfulRequests);
+        var totalFailedRequests = results.Sum(r => r.FailedRequests);
+        var averageResponseTimeMs = results.Any() ? results.Average(r => r.AverageResponseTimeMs) : 0;
+        var averageRequestsPerSecond = results.Any() ? results.Average(r => r.RequestsPerSecond) : 0;
+        var averageCpuUsage = results.Any() ? results.Average(r => r.CpuUsagePercent) : 0;
+        var averageMemoryUsage = results.Any() ? results.Average(r => r.MemoryUsagePercent) : 0;
+        var maxPerformanceImpact = results.Any() ? results.Max(r => r.PerformanceImpact) : Core.Enums.PerformanceImpactLevel.Minor;
+        var overallErrorRate = totalRequests > 0 ? (double)totalFailedRequests / totalRequests * 100 : 0;
         
-        // Output test result status
-        if (result.Status == Core.Enums.TestStatus.Completed && result.ErrorRatePercent <= result.MaxErrorRatePercent)
+        // Output TeamCity service messages for build statistics (aggregated)
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.TotalRequests' value='{totalRequests}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.SuccessfulRequests' value='{totalSuccessfulRequests}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.FailedRequests' value='{totalFailedRequests}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.ErrorRatePercent' value='{overallErrorRate:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageResponseTimeMs' value='{averageResponseTimeMs:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageRequestsPerSecond' value='{averageRequestsPerSecond:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageCpuUsagePercent' value='{averageCpuUsage:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageMemoryUsagePercent' value='{averageMemoryUsage:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.MaxPerformanceImpact' value='{maxPerformanceImpact}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.TotalScenarios' value='{results.Count}']");
+        
+        // Output individual test results
+        foreach (var result in results)
         {
-            Console.WriteLine($"##teamcity[testResult name='{result.TestName}' status='SUCCESS']");
+            if (result.Status == Core.Enums.TestStatus.Completed && result.ErrorRatePercent <= result.MaxErrorRatePercent)
+            {
+                Console.WriteLine($"##teamcity[testResult name='{result.TestName}' status='SUCCESS']");
+            }
+            else
+            {
+                Console.WriteLine($"##teamcity[testResult name='{result.TestName}' status='FAILURE']");
+            }
+        }
+        
+        // Output overall build status
+        var failedTests = results.Count(r => r.Status != Core.Enums.TestStatus.Completed || r.ErrorRatePercent > r.MaxErrorRatePercent);
+        var hasMajorPerformanceImpact = results.Any(r => r.PerformanceImpact >= Core.Enums.PerformanceImpactLevel.Major);
+        
+        if (failedTests > 0 || hasMajorPerformanceImpact)
+        {
+            var failureReason = failedTests > 0 ? $"{failedTests} test(s) failed" : "Performance degradation detected";
+            Console.WriteLine($"##teamcity[buildStatus status='FAILURE' text='{failureReason}']");
         }
         else
         {
-            Console.WriteLine($"##teamcity[testResult name='{result.TestName}' status='FAILURE']");
-        }
-        
-        // Output build status
-        if (result.PerformanceImpact >= Core.Enums.PerformanceImpactLevel.Major)
-        {
-            Console.WriteLine($"##teamcity[buildStatus status='FAILURE' text='Performance degradation detected: {result.PerformanceImpact}']");
-        }
-        else
-        {
-            Console.WriteLine($"##teamcity[buildStatus status='SUCCESS' text='Performance test completed successfully']");
+            Console.WriteLine($"##teamcity[buildStatus status='SUCCESS' text='All {results.Count} performance tests completed successfully']");
         }
     }
 }
