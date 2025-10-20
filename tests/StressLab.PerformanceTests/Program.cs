@@ -189,8 +189,8 @@ public class Program
                 logger.LogError(ex, "Failed to generate combined HTML report");
             }
 
-            // Output results for TeamCity
-            OutputTeamCityResults(allResults);
+    // Output results for TeamCity (individual tests first)
+    OutputTeamCityResults(allResults);
 
             Log.Information("StressLab Performance Tests completed successfully");
             return 0;
@@ -285,29 +285,7 @@ public class Program
 
     private static void OutputTeamCityResults(List<Core.Entities.TestResult> results)
     {
-        var totalRequests = results.Sum(r => r.TotalRequests);
-        var totalSuccessfulRequests = results.Sum(r => r.SuccessfulRequests);
-        var totalFailedRequests = results.Sum(r => r.FailedRequests);
-        var averageResponseTimeMs = results.Any() ? results.Average(r => r.AverageResponseTimeMs) : 0;
-        var averageRequestsPerSecond = results.Any() ? results.Average(r => r.RequestsPerSecond) : 0;
-        var averageCpuUsage = results.Any() ? results.Average(r => r.CpuUsagePercent) : 0;
-        var averageMemoryUsage = results.Any() ? results.Average(r => r.MemoryUsagePercent) : 0;
-        var maxPerformanceImpact = results.Any() ? results.Max(r => r.PerformanceImpact) : Core.Enums.PerformanceImpactLevel.Minor;
-        var overallErrorRate = totalRequests > 0 ? (double)totalFailedRequests / totalRequests * 100 : 0;
-        
-        // Output TeamCity service messages for build statistics (aggregated)
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.TotalRequests' value='{totalRequests}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.SuccessfulRequests' value='{totalSuccessfulRequests}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.FailedRequests' value='{totalFailedRequests}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.ErrorRatePercent' value='{overallErrorRate:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageResponseTimeMs' value='{averageResponseTimeMs:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageRequestsPerSecond' value='{averageRequestsPerSecond:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageCpuUsagePercent' value='{averageCpuUsage:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageMemoryUsagePercent' value='{averageMemoryUsage:F2}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.MaxPerformanceImpact' value='{maxPerformanceImpact}']");
-        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.TotalScenarios' value='{results.Count}']");
-        
-        // Output individual test results
+        // Output individual test results FIRST
         foreach (var result in results)
         {
             if (result.Status == Core.Enums.TestStatus.Completed && result.ErrorRatePercent <= result.MaxErrorRatePercent)
@@ -319,6 +297,28 @@ public class Program
                 Console.WriteLine($"##teamcity[testResult name='{result.TestName}' status='FAILURE']");
             }
         }
+        
+        // Then output aggregated build statistics
+        var totalRequests = results.Sum(r => r.TotalRequests);
+        var totalSuccessfulRequests = results.Sum(r => r.SuccessfulRequests);
+        var totalFailedRequests = results.Sum(r => r.FailedRequests);
+        var averageResponseTimeMs = results.Any() ? results.Average(r => r.AverageResponseTimeMs) : 0;
+        var averageRequestsPerSecond = results.Any() ? results.Average(r => r.RequestsPerSecond) : 0;
+        var averageCpuUsage = results.Any() ? results.Average(r => r.CpuUsagePercent) : 0;
+        var averageMemoryUsage = results.Any() ? results.Average(r => r.MemoryUsagePercent) : 0;
+        var maxPerformanceImpact = results.Any() ? results.Max(r => r.PerformanceImpact) : Core.Enums.PerformanceImpactLevel.Minor;
+        var overallErrorRate = totalRequests > 0 ? (double)totalFailedRequests / totalRequests * 100 : 0;
+
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.TotalRequests' value='{totalRequests}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.SuccessfulRequests' value='{totalSuccessfulRequests}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.FailedRequests' value='{totalFailedRequests}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.ErrorRatePercent' value='{overallErrorRate:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageResponseTimeMs' value='{averageResponseTimeMs:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageRequestsPerSecond' value='{averageRequestsPerSecond:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageCpuUsagePercent' value='{averageCpuUsage:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.AverageMemoryUsagePercent' value='{averageMemoryUsage:F2}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.MaxPerformanceImpact' value='{maxPerformanceImpact}']");
+        Console.WriteLine($"##teamcity[buildStatisticValue key='PerformanceTest.TotalScenarios' value='{results.Count}']");
         
         // Output overall build status
         var failedTests = results.Count(r => r.Status != Core.Enums.TestStatus.Completed || r.ErrorRatePercent > r.MaxErrorRatePercent);

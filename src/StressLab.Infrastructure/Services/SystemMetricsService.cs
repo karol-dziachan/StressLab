@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using StressLab.Core.Interfaces.Services;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace StressLab.Infrastructure.Services;
 
@@ -107,11 +108,12 @@ public class SystemMetricsService : ISystemMetricsService
                 var availableMemoryMB = _memoryCounter?.NextValue() ?? 0;
                 diskUsage = _diskCounter?.NextValue() ?? 0;
                 
-                // Get total memory
-                totalMemoryBytes = GC.GetTotalMemory(false);
+                // Get total physical memory via Windows API
+                totalMemoryBytes = GetWindowsTotalPhysicalMemoryBytes();
+
                 availableMemoryBytes = (long)(availableMemoryMB * 1024 * 1024);
-                memoryUsagePercent = totalMemoryBytes > 0 ? 
-                    ((double)(totalMemoryBytes - availableMemoryBytes) / totalMemoryBytes) * 100 : 0;
+                var usedMemoryBytes = Math.Max(0, totalMemoryBytes - availableMemoryBytes);
+                memoryUsagePercent = totalMemoryBytes > 0 ? (double)usedMemoryBytes / totalMemoryBytes * 100 : 0;
                 
                 // Skip network metrics on Windows to avoid interface issues
                 networkSent = 0;
@@ -145,7 +147,7 @@ public class SystemMetricsService : ISystemMetricsService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to collect system metrics");
-            
+            // Provide safe defaults so consumers do not misinterpret negative or NaN values
             return new SystemMetrics
             {
                 CpuUsagePercent = 0,
@@ -199,6 +201,23 @@ public class SystemMetricsService : ISystemMetricsService
             return 0;
         }
     }
+
+    // Windows-specific: retrieve total physical memory using Kernel32
+    private static long GetWindowsTotalPhysicalMemoryBytes()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            if (GetPhysicallyInstalledSystemMemory(out var memoryKb) && memoryKb > 0)
+            {
+                return memoryKb * 1024; // Convert from KB to bytes
+            }
+        }
+        // Fallback to process working set to avoid zeros if API fails
+        return Environment.WorkingSet;
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern bool GetPhysicallyInstalledSystemMemory(out long totalMemoryInKilobytes);
 
     private (double usagePercent, long availableBytes, long totalBytes) GetLinuxMemoryUsage()
     {

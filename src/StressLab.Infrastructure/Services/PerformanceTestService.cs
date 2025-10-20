@@ -81,6 +81,7 @@ public class PerformanceTestService : IPerformanceTestService
 
         var startTime = DateTimeOffset.UtcNow;
         var results = new List<HttpResponseMessage>();
+        var responseTimesMs = new System.Collections.Concurrent.ConcurrentBag<double>();
         var errors = new List<Exception>();
 
         // Simple load test simulation
@@ -98,7 +99,10 @@ public class PerformanceTestService : IPerformanceTestService
                             new HttpMethod(configuration.ApiMethod ?? "GET"),
                             configuration.ApiEndpoint);
 
+                        var stopwatch = Stopwatch.StartNew();
                         var response = await _httpClient.SendAsync(request, cancellationToken);
+                        stopwatch.Stop();
+                        responseTimesMs.Add(stopwatch.Elapsed.TotalMilliseconds);
                         results.Add(response);
                     }
                     catch (Exception ex)
@@ -117,7 +121,7 @@ public class PerformanceTestService : IPerformanceTestService
         var endTime = DateTimeOffset.UtcNow;
         var systemMetrics = _systemMetricsService.GetMetrics();
 
-        return CreateTestResult(configuration, startTime, endTime, results, errors, systemMetrics);
+        return CreateTestResult(configuration, startTime, endTime, results, responseTimesMs.ToList(), errors, systemMetrics);
     }
 
     public async Task<TestResult> ExecuteSqlTestAsync(TestConfiguration configuration, CancellationToken cancellationToken = default)
@@ -174,6 +178,7 @@ public class PerformanceTestService : IPerformanceTestService
         var startTime = DateTimeOffset.UtcNow;
         var apiResults = new List<HttpResponseMessage>();
         var sqlResults = new List<object>();
+        var responseTimesMs = new System.Collections.Concurrent.ConcurrentBag<double>();
         var errors = new List<Exception>();
 
         // Combined test - execute API and SQL operations together
@@ -192,7 +197,10 @@ public class PerformanceTestService : IPerformanceTestService
                             new HttpMethod(configuration.ApiMethod ?? "GET"),
                             configuration.ApiEndpoint);
 
+                        var stopwatch = Stopwatch.StartNew();
                         var response = await _httpClient.SendAsync(request, cancellationToken);
+                        stopwatch.Stop();
+                        responseTimesMs.Add(stopwatch.Elapsed.TotalMilliseconds);
                         apiResults.Add(response);
 
                         // Execute SQL procedure
@@ -221,11 +229,11 @@ public class PerformanceTestService : IPerformanceTestService
         var endTime = DateTimeOffset.UtcNow;
         var systemMetrics = _systemMetricsService.GetMetrics();
 
-        return CreateTestResult(configuration, startTime, endTime, apiResults, sqlResults, errors, systemMetrics);
+        return CreateTestResult(configuration, startTime, endTime, apiResults, sqlResults, responseTimesMs.ToList(), errors, systemMetrics);
     }
 
     private TestResult CreateTestResult(TestConfiguration configuration, DateTimeOffset startTime, DateTimeOffset endTime,
-        List<HttpResponseMessage> apiResults, List<Exception> errors, SystemMetrics systemMetrics)
+        List<HttpResponseMessage> apiResults, List<double> responseTimesMs, List<Exception> errors, SystemMetrics systemMetrics)
     {
         var duration = (endTime - startTime).TotalSeconds;
         var totalRequests = apiResults.Count;
@@ -233,10 +241,11 @@ public class PerformanceTestService : IPerformanceTestService
         var failedRequests = errors.Count + apiResults.Count(r => !r.IsSuccessStatusCode);
         var errorRatePercent = totalRequests > 0 ? (double)failedRequests / totalRequests * 100 : 0;
         var requestsPerSecond = duration > 0 ? totalRequests / duration : 0;
-
-        var averageResponseTimeMs = apiResults.Any() 
-            ? apiResults.Average(r => (double?)r.Headers.Date?.Subtract(startTime.DateTime).TotalMilliseconds ?? 0)
-            : 0;
+        var averageResponseTimeMs = responseTimesMs.Any() ? responseTimesMs.Average() : 0;
+        var minResponseTimeMs = responseTimesMs.Any() ? responseTimesMs.Min() : 0;
+        var maxResponseTimeMs = responseTimesMs.Any() ? responseTimesMs.Max() : 0;
+        var p95ResponseTimeMs = responseTimesMs.Any() ? Percentile(responseTimesMs, 0.95) : averageResponseTimeMs * 1.5;
+        var p99ResponseTimeMs = responseTimesMs.Any() ? Percentile(responseTimesMs, 0.99) : averageResponseTimeMs * 2.0;
 
         var status = errorRatePercent <= configuration.MaxErrorRatePercent 
             ? TestStatus.Completed 
@@ -252,14 +261,17 @@ public class PerformanceTestService : IPerformanceTestService
             Description = configuration.Description,
             StartTime = startTime,
             EndTime = endTime,
+            DurationSeconds = duration,
             Status = status,
             TotalRequests = totalRequests,
             SuccessfulRequests = successfulRequests,
             FailedRequests = failedRequests,
             ErrorRatePercent = errorRatePercent,
             AverageResponseTimeMs = averageResponseTimeMs,
-            P95ResponseTimeMs = averageResponseTimeMs * 1.5, // Simplified calculation
-            P99ResponseTimeMs = averageResponseTimeMs * 2.0, // Simplified calculation
+            MinResponseTimeMs = minResponseTimeMs,
+            MaxResponseTimeMs = maxResponseTimeMs,
+            P95ResponseTimeMs = p95ResponseTimeMs,
+            P99ResponseTimeMs = p99ResponseTimeMs,
             RequestsPerSecond = requestsPerSecond,
             CpuUsagePercent = systemMetrics.CpuUsagePercent,
             MemoryUsagePercent = systemMetrics.MemoryUsagePercent,
@@ -295,6 +307,7 @@ public class PerformanceTestService : IPerformanceTestService
             Description = configuration.Description,
             StartTime = startTime,
             EndTime = endTime,
+            DurationSeconds = duration,
             Status = status,
             TotalRequests = totalRequests,
             SuccessfulRequests = successfulRequests,
@@ -313,7 +326,7 @@ public class PerformanceTestService : IPerformanceTestService
     }
 
     private TestResult CreateTestResult(TestConfiguration configuration, DateTimeOffset startTime, DateTimeOffset endTime,
-        List<HttpResponseMessage> apiResults, List<object> sqlResults, List<Exception> errors, SystemMetrics systemMetrics)
+        List<HttpResponseMessage> apiResults, List<object> sqlResults, List<double> responseTimesMs, List<Exception> errors, SystemMetrics systemMetrics)
     {
         var duration = (endTime - startTime).TotalSeconds;
         var totalRequests = apiResults.Count + sqlResults.Count;
@@ -321,8 +334,11 @@ public class PerformanceTestService : IPerformanceTestService
         var failedRequests = errors.Count + apiResults.Count(r => !r.IsSuccessStatusCode);
         var errorRatePercent = totalRequests > 0 ? (double)failedRequests / totalRequests * 100 : 0;
         var requestsPerSecond = duration > 0 ? totalRequests / duration : 0;
-
-        var averageResponseTimeMs = 300.0; // Simplified for combined operations
+        var averageResponseTimeMs = responseTimesMs.Any() ? responseTimesMs.Average() : 300.0;
+        var minResponseTimeMs = responseTimesMs.Any() ? responseTimesMs.Min() : averageResponseTimeMs;
+        var maxResponseTimeMs = responseTimesMs.Any() ? responseTimesMs.Max() : averageResponseTimeMs;
+        var p95ResponseTimeMs = responseTimesMs.Any() ? Percentile(responseTimesMs, 0.95) : averageResponseTimeMs * 1.5;
+        var p99ResponseTimeMs = responseTimesMs.Any() ? Percentile(responseTimesMs, 0.99) : averageResponseTimeMs * 2.0;
 
         var status = errorRatePercent <= configuration.MaxErrorRatePercent 
             ? TestStatus.Completed 
@@ -338,14 +354,17 @@ public class PerformanceTestService : IPerformanceTestService
             Description = configuration.Description,
             StartTime = startTime,
             EndTime = endTime,
+            DurationSeconds = duration,
             Status = status,
             TotalRequests = totalRequests,
             SuccessfulRequests = successfulRequests,
             FailedRequests = failedRequests,
             ErrorRatePercent = errorRatePercent,
             AverageResponseTimeMs = averageResponseTimeMs,
-            P95ResponseTimeMs = averageResponseTimeMs * 1.5,
-            P99ResponseTimeMs = averageResponseTimeMs * 2.0,
+            MinResponseTimeMs = minResponseTimeMs,
+            MaxResponseTimeMs = maxResponseTimeMs,
+            P95ResponseTimeMs = p95ResponseTimeMs,
+            P99ResponseTimeMs = p99ResponseTimeMs,
             RequestsPerSecond = requestsPerSecond,
             CpuUsagePercent = systemMetrics.CpuUsagePercent,
             MemoryUsagePercent = systemMetrics.MemoryUsagePercent,
@@ -370,5 +389,17 @@ public class PerformanceTestService : IPerformanceTestService
             return PerformanceImpactLevel.Minor;
         
         return PerformanceImpactLevel.None;
+    }
+
+    private static double Percentile(List<double> sequence, double percentile)
+    {
+        if (sequence is null || sequence.Count == 0) return 0;
+        var ordered = sequence.OrderBy(x => x).ToArray();
+        var position = (ordered.Length - 1) * percentile;
+        var lowerIndex = (int)Math.Floor(position);
+        var upperIndex = (int)Math.Ceiling(position);
+        if (lowerIndex == upperIndex) return ordered[lowerIndex];
+        var weight = position - lowerIndex;
+        return ordered[lowerIndex] * (1 - weight) + ordered[upperIndex] * weight;
     }
 }

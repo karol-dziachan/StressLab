@@ -495,53 +495,7 @@ public class ReportService : IReportService
         html.AppendLine("        </div>");
         html.AppendLine("    </div>");
         
-        // Overall Summary Cards
-        html.AppendLine("    <div class=\"summary-section\">");
-        html.AppendLine("        <h2>📊 Overall Summary</h2>");
-        html.AppendLine("        <div class=\"summary-cards\">");
-        html.AppendLine("            <div class=\"card success-card\">");
-        html.AppendLine("                <div class=\"card-icon\">✅</div>");
-        html.AppendLine("                <h3>Success Rate</h3>");
-        html.AppendLine($"                <div class=\"metric-value\">{(100 - overallErrorRate):F2}%</div>");
-        html.AppendLine($"                <div class=\"metric-detail\">{totalSuccessfulRequests:N0} / {totalRequests:N0}</div>");
-        html.AppendLine("            </div>");
-        html.AppendLine("            <div class=\"card performance-card\">");
-        html.AppendLine("                <div class=\"card-icon\">⚡</div>");
-        html.AppendLine("                <h3>Avg Response Time</h3>");
-        html.AppendLine($"                <div class=\"metric-value\">{averageResponseTimeMs:F2} ms</div>");
-        html.AppendLine($"                <div class=\"metric-detail\">Across all tests</div>");
-        html.AppendLine("            </div>");
-        html.AppendLine("            <div class=\"card throughput-card\">");
-        html.AppendLine("                <div class=\"card-icon\">📈</div>");
-        html.AppendLine("                <h3>Avg Throughput</h3>");
-        html.AppendLine($"                <div class=\"metric-value\">{averageRequestsPerSecond:F2}</div>");
-        html.AppendLine($"                <div class=\"metric-detail\">requests/second</div>");
-        html.AppendLine("            </div>");
-        html.AppendLine("            <div class=\"card system-card\">");
-        html.AppendLine("                <div class=\"card-icon\">💻</div>");
-        html.AppendLine("                <h3>System Usage</h3>");
-        html.AppendLine($"                <div class=\"metric-value\">{averageCpuUsage:F1}% CPU</div>");
-        html.AppendLine($"                <div class=\"metric-detail\">{averageMemoryUsage:F1}% Memory</div>");
-        html.AppendLine("            </div>");
-        html.AppendLine("        </div>");
-        html.AppendLine("    </div>");
-        
-        // Charts Section
-        html.AppendLine("    <div class=\"charts-section\">");
-        html.AppendLine("        <h2>📈 Performance Charts</h2>");
-        html.AppendLine("        <div class=\"charts-grid\">");
-        html.AppendLine("            <div class=\"chart-container\">");
-        html.AppendLine("                <h3>Response Time Distribution</h3>");
-        html.AppendLine("                <canvas id=\"responseTimeChart\"></canvas>");
-        html.AppendLine("            </div>");
-        html.AppendLine("            <div class=\"chart-container\">");
-        html.AppendLine("                <h3>Success Rate by Test</h3>");
-        html.AppendLine("                <canvas id=\"successRateChart\"></canvas>");
-        html.AppendLine("            </div>");
-        html.AppendLine("        </div>");
-        html.AppendLine("    </div>");
-        
-        // Individual Test Results
+        // Individual Test Results FIRST
         html.AppendLine("    <div class=\"tests-section\">");
         html.AppendLine("        <h2>🧪 Individual Test Results</h2>");
         html.AppendLine("        <div class=\"tests-grid\">");
@@ -601,6 +555,52 @@ public class ReportService : IReportService
             html.AppendLine($"            </div>");
         }
         
+        html.AppendLine("        </div>");
+        html.AppendLine("    </div>");
+
+        // Overall Summary Cards AFTER individual results
+        html.AppendLine("    <div class=\"summary-section\">");
+        html.AppendLine("        <h2>📊 Overall Summary</h2>");
+        html.AppendLine("        <div class=\"summary-cards\">");
+        html.AppendLine("            <div class=\"card success-card\">");
+        html.AppendLine("                <div class=\"card-icon\">✅</div>");
+        html.AppendLine("                <h3>Success Rate</h3>");
+        html.AppendLine($"                <div class=\"metric-value\">{(100 - overallErrorRate):F2}%</div>");
+        html.AppendLine($"                <div class=\"metric-detail\">{totalSuccessfulRequests:N0} / {totalRequests:N0}</div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <div class=\"card performance-card\">");
+        html.AppendLine("                <div class=\"card-icon\">⚡</div>");
+        html.AppendLine("                <h3>Avg Response Time</h3>");
+        html.AppendLine($"                <div class=\"metric-value\">{averageResponseTimeMs:F2} ms</div>");
+        html.AppendLine($"                <div class=\"metric-detail\">Across all tests</div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <div class=\"card throughput-card\">");
+        html.AppendLine("                <div class=\"card-icon\">📈</div>");
+        html.AppendLine("                <h3>Avg Throughput</h3>");
+        html.AppendLine($"                <div class=\"metric-value\">{averageRequestsPerSecond:F2}</div>");
+        html.AppendLine($"                <div class=\"metric-detail\">requests/second</div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <div class=\"card system-card\">");
+        html.AppendLine("                <div class=\"card-icon\">💻</div>");
+        html.AppendLine("                <h3>System Usage</h3>");
+        html.AppendLine($"                <div class=\"metric-value\">{averageCpuUsage:F1}% CPU</div>");
+        html.AppendLine($"                <div class=\"metric-detail\">{averageMemoryUsage:F1}% Memory</div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("        </div>");
+        html.AppendLine("    </div>");
+
+        // Charts Section AFTER summaries
+        html.AppendLine("    <div class=\"charts-section\">");
+        html.AppendLine("        <h2>📈 Performance Charts</h2>");
+        html.AppendLine("        <div class=\"charts-grid\">");
+        html.AppendLine("            <div class=\"chart-container\">");
+        html.AppendLine("                <h3>Response Time Distribution</h3>");
+        html.AppendLine("                <canvas id=\"responseTimeChart\"></canvas>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            <div class=\"chart-container\">");
+        html.AppendLine("                <h3>Success Rate by Test</h3>");
+        html.AppendLine("                <canvas id=\"successRateChart\"></canvas>");
+        html.AppendLine("            </div>");
         html.AppendLine("        </div>");
         html.AppendLine("    </div>");
         
