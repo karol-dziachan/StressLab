@@ -28,35 +28,6 @@ public class PerformanceTestService : IPerformanceTestService
         ILogger<PerformanceTestService> logger,
         HttpClient httpClient,
         ISystemMetricsService systemMetricsService,
-        IHttpClientConfigurationService httpClientConfigService)
-    {
-        _logger = logger;
-        _httpClient = httpClient;
-        _systemMetricsService = systemMetricsService;
-        _httpClientConfigService = httpClientConfigService;
-        _failCriteria = new FailCriteriaOptions();
-        _historyService = null;
-    }
-
-    public PerformanceTestService(
-        ILogger<PerformanceTestService> logger,
-        HttpClient httpClient,
-        ISystemMetricsService systemMetricsService,
-        IHttpClientConfigurationService httpClientConfigService,
-        FailCriteriaOptions failCriteriaOptions)
-    {
-        _logger = logger;
-        _httpClient = httpClient;
-        _systemMetricsService = systemMetricsService;
-        _httpClientConfigService = httpClientConfigService;
-        _failCriteria = failCriteriaOptions ?? new FailCriteriaOptions();
-        _historyService = null;
-    }
-
-    public PerformanceTestService(
-        ILogger<PerformanceTestService> logger,
-        HttpClient httpClient,
-        ISystemMetricsService systemMetricsService,
         IHttpClientConfigurationService httpClientConfigService,
         FailCriteriaOptions failCriteriaOptions,
         ITestResultHistoryService historyService)
@@ -91,8 +62,9 @@ public class PerformanceTestService : IPerformanceTestService
             {
                 try
                 {
+                    _logger.LogInformation("🔄 Logging test result to database: {TestName}", configuration.Name);
                     await _historyService.LogTestResultAsync(result, cancellationToken);
-                    _logger.LogInformation("Test result logged to history: {TestName}", configuration.Name);
+                    _logger.LogInformation("✅ Test result successfully saved to database: {TestName}", configuration.Name);
                     
                     // TODO: Check for performance deviations and send alerts
                     // After logging to history, analyze deviations and send email alerts if needed
@@ -105,9 +77,14 @@ public class PerformanceTestService : IPerformanceTestService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to log test result to history: {TestName}", configuration.Name);
-                    // Don't fail the test if history logging fails
+                    var errorMsg = $"❌ CRITICAL ERROR: Failed to save test result to database for test: {configuration.Name}";
+                    _logger.LogError(ex, errorMsg);
+                    throw new InvalidOperationException(errorMsg, ex);
                 }
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ TestResultHistoryService is not registered - test results will not be saved to database");
             }
 
             _logger.LogInformation("Performance test completed successfully: {TestName}", configuration.Name);

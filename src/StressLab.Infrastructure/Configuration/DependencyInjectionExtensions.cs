@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using FluentValidation;
 using Serilog;
+using StressLab.Core.Entities;
 using StressLab.Core.Interfaces.Repositories;
 using StressLab.Core.Interfaces.Services;
 using StressLab.Infrastructure.Repositories;
@@ -33,13 +34,23 @@ public static class DependencyInjectionExtensions
         services.AddScoped<ITestResultHistoryRepository, SqlServerTestResultHistoryRepository>();
         
         // Register services
-        services.AddSingleton<IPerformanceTestService, PerformanceTestService>();
+        services.AddSingleton<IPerformanceTestService>(provider =>
+        {
+            var logger = provider.GetRequiredService<ILogger<PerformanceTestService>>();
+            var httpClient = provider.GetRequiredService<HttpClient>();
+            var systemMetricsService = provider.GetRequiredService<ISystemMetricsService>();
+            var httpClientConfigService = provider.GetRequiredService<IHttpClientConfigurationService>();
+            var failCriteriaOptions = new FailCriteriaOptions();
+            var historyService = provider.GetService<ITestResultHistoryService>();
+            
+            return new PerformanceTestService(logger, httpClient, systemMetricsService, httpClientConfigService, failCriteriaOptions, historyService!);
+        });
         services.AddSingleton<IReportService, ReportService>();
         services.AddSingleton<ISystemMetricsService, SystemMetricsService>();
         services.AddSingleton<IScenarioConfigurationService, ScenarioConfigurationService>();
         services.AddSingleton<IScenarioExecutionService, ScenarioExecutionService>();
         services.AddSingleton<IHttpClientConfigurationService, HttpClientConfigurationService>();
-        services.AddScoped<ITestResultHistoryService, TestResultHistoryService>();
+        services.AddSingleton<ITestResultHistoryService, TestResultHistoryService>();
         
         // Register configuration options
         services.Configure<ScenarioConfigurationOptions>(options =>
@@ -68,7 +79,17 @@ public static class DependencyInjectionExtensions
         services.AddSingleton<ITestResultHistoryRepository, InMemoryTestResultHistoryRepository>();
         
         // Register services
-        services.AddSingleton<IPerformanceTestService, PerformanceTestService>();
+        services.AddSingleton<IPerformanceTestService>(provider =>
+        {
+            var logger = provider.GetRequiredService<ILogger<PerformanceTestService>>();
+            var httpClient = provider.GetRequiredService<HttpClient>();
+            var systemMetricsService = provider.GetRequiredService<ISystemMetricsService>();
+            var httpClientConfigService = provider.GetRequiredService<IHttpClientConfigurationService>();
+            var failCriteriaOptions = new FailCriteriaOptions();
+            var historyService = provider.GetService<ITestResultHistoryService>();
+            
+            return new PerformanceTestService(logger, httpClient, systemMetricsService, httpClientConfigService, failCriteriaOptions, historyService!);
+        });
         services.AddSingleton<IReportService, ReportService>();
         services.AddSingleton<ISystemMetricsService, SystemMetricsService>();
         services.AddSingleton<IScenarioConfigurationService, ScenarioConfigurationService>();
