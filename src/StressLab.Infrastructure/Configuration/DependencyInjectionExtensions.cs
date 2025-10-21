@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using FluentValidation;
 using Serilog;
 using StressLab.Core.Interfaces.Repositories;
@@ -19,12 +20,17 @@ public static class DependencyInjectionExtensions
     /// Adds StressLab infrastructure services to the service collection
     /// </summary>
     /// <param name="services">Service collection</param>
+    /// <param name="configuration">Configuration</param>
     /// <returns>Service collection for chaining</returns>
-    public static IServiceCollection AddStressLabInfrastructure(this IServiceCollection services)
+    public static IServiceCollection AddStressLabInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        // Register database configuration
+        services.Configure<DatabaseOptions>(configuration.GetSection("Database"));
+        
         // Register repositories
         services.AddSingleton<ITestConfigurationRepository, InMemoryTestConfigurationRepository>();
         services.AddSingleton<ITestResultRepository, InMemoryTestResultRepository>();
+        services.AddScoped<ITestResultHistoryRepository, SqlServerTestResultHistoryRepository>();
         
         // Register services
         services.AddSingleton<IPerformanceTestService, PerformanceTestService>();
@@ -33,6 +39,42 @@ public static class DependencyInjectionExtensions
         services.AddSingleton<IScenarioConfigurationService, ScenarioConfigurationService>();
         services.AddSingleton<IScenarioExecutionService, ScenarioExecutionService>();
         services.AddSingleton<IHttpClientConfigurationService, HttpClientConfigurationService>();
+        services.AddScoped<ITestResultHistoryService, TestResultHistoryService>();
+        
+        // Register configuration options
+        services.Configure<ScenarioConfigurationOptions>(options =>
+        {
+            options.ScenariosFilePath = "scenarios.json";
+            options.AutoReload = false;
+            options.ReloadInterval = TimeSpan.FromMinutes(5);
+        });
+        
+        // Register HttpClient for API tests
+        services.AddHttpClient();
+        
+        return services;
+    }
+    
+    /// <summary>
+    /// Adds StressLab infrastructure services to the service collection (without configuration)
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddStressLabInfrastructure(this IServiceCollection services)
+    {
+        // Register repositories (in-memory only)
+        services.AddSingleton<ITestConfigurationRepository, InMemoryTestConfigurationRepository>();
+        services.AddSingleton<ITestResultRepository, InMemoryTestResultRepository>();
+        services.AddSingleton<ITestResultHistoryRepository, InMemoryTestResultHistoryRepository>();
+        
+        // Register services
+        services.AddSingleton<IPerformanceTestService, PerformanceTestService>();
+        services.AddSingleton<IReportService, ReportService>();
+        services.AddSingleton<ISystemMetricsService, SystemMetricsService>();
+        services.AddSingleton<IScenarioConfigurationService, ScenarioConfigurationService>();
+        services.AddSingleton<IScenarioExecutionService, ScenarioExecutionService>();
+        services.AddSingleton<IHttpClientConfigurationService, HttpClientConfigurationService>();
+        services.AddSingleton<ITestResultHistoryService, TestResultHistoryService>();
         
         // Register configuration options
         services.Configure<ScenarioConfigurationOptions>(options =>

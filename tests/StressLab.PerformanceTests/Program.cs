@@ -43,7 +43,7 @@ public class Program
             var host = Host.CreateDefaultBuilder(args)
                 .ConfigureServices((context, services) =>
                 {
-                    services.AddStressLabInfrastructure();
+                    services.AddStressLabInfrastructure(configuration);
                     services.AddStressLabApplication();
                     services.AddStressLabLogging();
                 })
