@@ -78,8 +78,11 @@ CREATE TABLE TestResultHistory (
     INDEX IX_TestResultHistory_TestName (TestName),
     INDEX IX_TestResultHistory_ExecutionDate (ExecutionDate),
     
-    FOREIGN KEY (TestConfigurationId) REFERENCES TestConfigurations(Id),
-    FOREIGN KEY (TestResultId) REFERENCES TestResults(Id)
+    -- Optional foreign keys - only enforce when values are not null
+    CONSTRAINT FK_TestResultHistory_TestConfiguration 
+        FOREIGN KEY (TestConfigurationId) REFERENCES TestConfigurations(Id),
+    CONSTRAINT FK_TestResultHistory_TestResult 
+        FOREIGN KEY (TestResultId) REFERENCES TestResults(Id)
 );
 
 -- Test Scenarios table
@@ -124,3 +127,27 @@ VALUES (NEWID(), 'Sample API Test', 'Basic API performance test', 0, 'https://ht
 -- Insert sample test scenario
 INSERT INTO TestScenarios (Id, Name, Description, Steps, MaxErrorRatePercent)
 VALUES (NEWID(), 'Sample Scenario', 'Basic test scenario', '[{"name":"API Test","type":"Api","endpoint":"https://httpbin.org/delay/1","method":"GET","duration":30,"concurrentUsers":3}]', 5.00);
+
+-- Update script for existing databases (run this if you already have the database)
+-- This allows NULL values in foreign key columns for scenarios
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK__TestResul__TestC__[random]')
+BEGIN
+    -- Drop existing foreign key constraints
+    ALTER TABLE TestResultHistory DROP CONSTRAINT IF EXISTS FK__TestResul__TestC__[random];
+    ALTER TABLE TestResultHistory DROP CONSTRAINT IF EXISTS FK__TestResul__TestR__[random];
+END
+
+-- Add new foreign key constraints that allow NULL values
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_TestResultHistory_TestConfiguration')
+BEGIN
+    ALTER TABLE TestResultHistory 
+    ADD CONSTRAINT FK_TestResultHistory_TestConfiguration 
+        FOREIGN KEY (TestConfigurationId) REFERENCES TestConfigurations(Id);
+END
+
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_TestResultHistory_TestResult')
+BEGIN
+    ALTER TABLE TestResultHistory 
+    ADD CONSTRAINT FK_TestResultHistory_TestResult 
+        FOREIGN KEY (TestResultId) REFERENCES TestResults(Id);
+END

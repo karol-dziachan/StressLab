@@ -91,7 +91,7 @@ public record TestResultDto
     /// <summary>
     /// Reference to the test configuration used
     /// </summary>
-    public required Guid TestConfigurationId { get; init; }
+    public Guid? TestConfigurationId { get; init; }
     
     /// <summary>
     /// Name of the executed test

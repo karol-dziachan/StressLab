@@ -321,7 +321,7 @@ public class ScenarioExecutionService : IScenarioExecutionService
             return new TestResult
             {
                 Id = Guid.NewGuid(),
-                TestConfigurationId = Guid.NewGuid(), // Temporary ID for scenario results
+                TestConfigurationId = null, // Scenarios don't have a specific TestConfiguration
                 TestName = scenario.Name,
                 Description = scenario.Description,
                 StartTime = DateTimeOffset.UtcNow,
@@ -352,7 +352,7 @@ public class ScenarioExecutionService : IScenarioExecutionService
         return new TestResult
         {
             Id = Guid.NewGuid(),
-            TestConfigurationId = Guid.NewGuid(), // Temporary ID for scenario results
+            TestConfigurationId = null, // Scenarios don't have a specific TestConfiguration
             TestName = scenario.Name,
             Description = scenario.Description,
             StartTime = stepResults.Min(r => r.StartTime),
