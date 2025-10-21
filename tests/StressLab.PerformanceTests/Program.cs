@@ -56,6 +56,18 @@ public class Program
             var scenarioExecutionService = host.Services.GetRequiredService<IScenarioExecutionService>();
             var reportService = host.Services.GetRequiredService<IReportService>();
             var performanceTestService = host.Services.GetRequiredService<IPerformanceTestService>();
+            
+            // Test database service registration
+            try
+            {
+                var historyService = host.Services.GetRequiredService<ITestResultHistoryService>();
+                logger.LogInformation("✅ TestResultHistoryService successfully registered and resolved");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "❌ CRITICAL: Failed to resolve TestResultHistoryService from DI container");
+                throw;
+            }
 
             // Parse command line arguments
             var testConfig = ParseCommandLineArguments(args, configuration);

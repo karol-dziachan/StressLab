@@ -23,7 +23,7 @@ public class TestResultHistoryService : ITestResultHistoryService
 
     public async Task LogTestResultAsync(TestResult testResult, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Logging test result to history: {TestName}", testResult.TestName);
+        _logger.LogInformation("🔄 Logging test result to database: {TestName}", testResult.TestName);
 
         try
         {
@@ -53,12 +53,13 @@ public class TestResultHistoryService : ITestResultHistoryService
 
             await _historyRepository.CreateAsync(history, cancellationToken);
             
-            _logger.LogInformation("Test result logged to history successfully: {TestName}", testResult.TestName);
+            _logger.LogInformation("✅ Test result successfully saved to database: {TestName}", testResult.TestName);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to log test result to history: {TestName}", testResult.TestName);
-            throw;
+            var errorMsg = $"❌ CRITICAL ERROR: Failed to save test result to database for test: {testResult.TestName}";
+            _logger.LogError(ex, errorMsg);
+            throw new InvalidOperationException(errorMsg, ex);
         }
     }
 

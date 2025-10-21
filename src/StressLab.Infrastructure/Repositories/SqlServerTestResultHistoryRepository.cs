@@ -22,6 +22,29 @@ public class SqlServerTestResultHistoryRepository : ITestResultHistoryRepository
     {
         _connectionString = databaseOptions.Value.ConnectionString;
         _logger = logger;
+        
+        _logger.LogInformation("🔗 Database connection configured: {ConnectionString}", 
+            _connectionString.Replace("Password=", "Password=***"));
+        
+        // Test database connection on startup
+        _ = Task.Run(async () => await TestDatabaseConnectionAsync());
+    }
+    
+    private async Task TestDatabaseConnectionAsync()
+    {
+        try
+        {
+            _logger.LogInformation("🔍 Testing database connection...");
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await connection.CloseAsync();
+            _logger.LogInformation("✅ Database connection test successful!");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ CRITICAL: Database connection test FAILED!");
+            _logger.LogError("Please check your connection string and ensure SQL Server is running");
+        }
     }
 
     public async Task<IEnumerable<TestResultHistory>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -122,53 +145,70 @@ public class SqlServerTestResultHistoryRepository : ITestResultHistoryRepository
 
     public async Task<TestResultHistory> CreateAsync(TestResultHistory history, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Creating historical test result: {Id} for test: {TestName}", history.Id, history.TestName);
-        
-        const string sql = @"
-            INSERT INTO TestResultHistory (
-                Id, TestName, ExecutionDate, DurationSeconds, TotalRequests, 
-                SuccessfulRequests, FailedRequests, ErrorRatePercent, 
-                AverageResponseTimeMs, MinResponseTimeMs, MaxResponseTimeMs, 
-                P95ResponseTimeMs, P99ResponseTimeMs, RequestsPerSecond, 
-                CpuUsagePercent, MemoryUsagePercent, PerformanceImpact, 
-                Status, TestConfigurationId, TestResultId
-            ) VALUES (
-                @Id, @TestName, @ExecutionDate, @DurationSeconds, @TotalRequests, 
-                @SuccessfulRequests, @FailedRequests, @ErrorRatePercent, 
-                @AverageResponseTimeMs, @MinResponseTimeMs, @MaxResponseTimeMs, 
-                @P95ResponseTimeMs, @P99ResponseTimeMs, @RequestsPerSecond, 
-                @CpuUsagePercent, @MemoryUsagePercent, @PerformanceImpact, 
-                @Status, @TestConfigurationId, @TestResultId
-            )";
+        try
+        {
+            _logger.LogDebug("Creating historical test result: {Id} for test: {TestName}", history.Id, history.TestName);
+            
+            const string sql = @"
+                INSERT INTO TestResultHistory (
+                    Id, TestName, ExecutionDate, DurationSeconds, TotalRequests, 
+                    SuccessfulRequests, FailedRequests, ErrorRatePercent, 
+                    AverageResponseTimeMs, MinResponseTimeMs, MaxResponseTimeMs, 
+                    P95ResponseTimeMs, P99ResponseTimeMs, RequestsPerSecond, 
+                    CpuUsagePercent, MemoryUsagePercent, PerformanceImpact, 
+                    Status, TestConfigurationId, TestResultId
+                ) VALUES (
+                    @Id, @TestName, @ExecutionDate, @DurationSeconds, @TotalRequests, 
+                    @SuccessfulRequests, @FailedRequests, @ErrorRatePercent, 
+                    @AverageResponseTimeMs, @MinResponseTimeMs, @MaxResponseTimeMs, 
+                    @P95ResponseTimeMs, @P99ResponseTimeMs, @RequestsPerSecond, 
+                    @CpuUsagePercent, @MemoryUsagePercent, @PerformanceImpact, 
+                    @Status, @TestConfigurationId, @TestResultId
+                )";
 
-        using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        
-        await connection.ExecuteAsync(sql, new {
-            Id = history.Id,
-            TestName = history.TestName,
-            ExecutionDate = history.ExecutionDate,
-            DurationSeconds = history.DurationSeconds,
-            TotalRequests = history.TotalRequests,
-            SuccessfulRequests = history.SuccessfulRequests,
-            FailedRequests = history.FailedRequests,
-            ErrorRatePercent = history.ErrorRatePercent,
-            AverageResponseTimeMs = history.AverageResponseTimeMs,
-            MinResponseTimeMs = history.MinResponseTimeMs,
-            MaxResponseTimeMs = history.MaxResponseTimeMs,
-            P95ResponseTimeMs = history.P95ResponseTimeMs,
-            P99ResponseTimeMs = history.P99ResponseTimeMs,
-            RequestsPerSecond = history.RequestsPerSecond,
-            CpuUsagePercent = history.CpuUsagePercent,
-            MemoryUsagePercent = history.MemoryUsagePercent,
-            PerformanceImpact = (int)history.PerformanceImpact,
-            Status = (int)history.Status,
-            TestConfigurationId = history.TestConfigurationId,
-            TestResultId = history.TestResultId
-        });
-        
-        _logger.LogDebug("Historical test result created successfully: {Id}", history.Id);
-        return history;
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync(cancellationToken);
+            
+            var rowsAffected = await connection.ExecuteAsync(sql, new {
+                Id = history.Id,
+                TestName = history.TestName,
+                ExecutionDate = history.ExecutionDate,
+                DurationSeconds = history.DurationSeconds,
+                TotalRequests = history.TotalRequests,
+                SuccessfulRequests = history.SuccessfulRequests,
+                FailedRequests = history.FailedRequests,
+                ErrorRatePercent = history.ErrorRatePercent,
+                AverageResponseTimeMs = history.AverageResponseTimeMs,
+                MinResponseTimeMs = history.MinResponseTimeMs,
+                MaxResponseTimeMs = history.MaxResponseTimeMs,
+                P95ResponseTimeMs = history.P95ResponseTimeMs,
+                P99ResponseTimeMs = history.P99ResponseTimeMs,
+                RequestsPerSecond = history.RequestsPerSecond,
+                CpuUsagePercent = history.CpuUsagePercent,
+                MemoryUsagePercent = history.MemoryUsagePercent,
+                PerformanceImpact = (int)history.PerformanceImpact,
+                Status = (int)history.Status,
+                TestConfigurationId = history.TestConfigurationId,
+                TestResultId = history.TestResultId
+            });
+            
+            if (rowsAffected == 0)
+            {
+                var errorMsg = $"Failed to insert test result history - no rows affected for test: {history.TestName}";
+                _logger.LogError(errorMsg);
+                throw new InvalidOperationException(errorMsg);
+            }
+            
+            _logger.LogInformation("✅ Successfully saved test result to database: {TestName} (ID: {Id})", history.TestName, history.Id);
+            return history;
+        }
+        catch (Exception ex)
+        {
+            var errorMsg = $"❌ CRITICAL ERROR: Failed to save test result to database for test: {history.TestName} (ID: {history.Id})";
+            _logger.LogError(ex, errorMsg);
+            _logger.LogError("Connection string: {ConnectionString}", _connectionString);
+            throw new InvalidOperationException(errorMsg, ex);
+        }
     }
 
     public async Task<TestResultHistory?> GetBaselineAsync(string testName, int sampleSize = 10, CancellationToken cancellationToken = default)
