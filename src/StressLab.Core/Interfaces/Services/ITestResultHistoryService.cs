@@ -26,6 +26,15 @@ public interface ITestResultHistoryService
     Task<PerformanceAnalysis?> AnalyzePerformanceDeviationAsync(TestResult testResult, int sampleSize = 10, CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// Analyzes performance deviation of a test result compared to average of previous tests with the same name
+    /// </summary>
+    /// <param name="testResult">Current test result</param>
+    /// <param name="sampleSize">Number of historical samples to use for average calculation</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Average deviation analysis or null if insufficient historical data</returns>
+    Task<AverageDeviationAnalysis?> AnalyzeDeviationFromAverageAsync(TestResult testResult, int sampleSize = 10, CancellationToken cancellationToken = default);
+    
+    /// <summary>
     /// Gets performance trend for a test name
     /// </summary>
     /// <param name="testName">Test name</param>

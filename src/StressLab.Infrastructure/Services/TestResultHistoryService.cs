@@ -48,7 +48,7 @@ public class TestResultHistoryService : ITestResultHistoryService
                 PerformanceImpact = testResult.PerformanceImpact,
                 Status = testResult.Status,
                 TestConfigurationId = testResult.TestConfigurationId,
-                TestResultId = testResult.Id
+                TestResultId = testResult.TestConfigurationId.HasValue ? testResult.Id : null // Only set TestResultId if it's a real test (has TestConfigurationId)
             };
 
             await _historyRepository.CreateAsync(history, cancellationToken);
@@ -60,6 +60,97 @@ public class TestResultHistoryService : ITestResultHistoryService
             var errorMsg = $"❌ CRITICAL ERROR: Failed to save test result to database for test: {testResult.TestName}";
             _logger.LogError(ex, errorMsg);
             throw new InvalidOperationException(errorMsg, ex);
+        }
+    }
+
+    /// <summary>
+    /// Analyzes performance deviation of a test result compared to average of previous tests with the same name
+    /// </summary>
+    public async Task<AverageDeviationAnalysis?> AnalyzeDeviationFromAverageAsync(TestResult testResult, int sampleSize = 10, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Analyzing deviation from average for test: {TestName}", testResult.TestName);
+
+        try
+        {
+            // Get historical test results with the same name
+            var historicalResults = await _historyRepository.GetRecentByTestNameAsync(testResult.TestName, sampleSize, cancellationToken);
+            
+            if (!historicalResults.Any())
+            {
+                _logger.LogWarning("No historical data found for test: {TestName}", testResult.TestName);
+                return null;
+            }
+
+            // Calculate average metrics from historical data
+            var averageResponseTime = historicalResults.Average(r => r.AverageResponseTimeMs);
+            var averageErrorRate = historicalResults.Average(r => r.ErrorRatePercent);
+            var averageThroughput = historicalResults.Average(r => r.RequestsPerSecond);
+            var averageCpuUsage = historicalResults.Average(r => r.CpuUsagePercent);
+            var averageMemoryUsage = historicalResults.Average(r => r.MemoryUsagePercent);
+
+            // Calculate deviations
+            var responseTimeDeviation = CalculateDeviationPercent(testResult.AverageResponseTimeMs, averageResponseTime);
+            var errorRateDeviation = CalculateDeviationPercent(testResult.ErrorRatePercent, averageErrorRate);
+            var throughputDeviation = CalculateDeviationPercent(testResult.RequestsPerSecond, averageThroughput);
+            var cpuUsageDeviation = CalculateDeviationPercent(testResult.CpuUsagePercent, averageCpuUsage);
+            var memoryUsageDeviation = CalculateDeviationPercent(testResult.MemoryUsagePercent, averageMemoryUsage);
+
+            // Calculate overall deviation score (weighted average)
+            var overallDeviation = (Math.Abs(responseTimeDeviation) * 0.3 + 
+                                  Math.Abs(errorRateDeviation) * 0.25 + 
+                                  Math.Abs(throughputDeviation) * 0.25 + 
+                                  Math.Abs(cpuUsageDeviation) * 0.1 + 
+                                  Math.Abs(memoryUsageDeviation) * 0.1);
+
+            // Determine trend direction
+            var trendDirection = DetermineTrendDirection(historicalResults.ToList());
+
+            // Generate recommendations
+            var recommendations = GenerateAverageBasedRecommendations(testResult, averageResponseTime, averageErrorRate, averageThroughput, responseTimeDeviation, errorRateDeviation, throughputDeviation);
+
+            var analysis = new AverageDeviationAnalysis
+            {
+                TestName = testResult.TestName,
+                AnalysisDate = DateTime.UtcNow,
+                SampleSize = historicalResults.Count(),
+                
+                // Current test metrics
+                CurrentAverageResponseTimeMs = testResult.AverageResponseTimeMs,
+                CurrentErrorRatePercent = testResult.ErrorRatePercent,
+                CurrentRequestsPerSecond = testResult.RequestsPerSecond,
+                CurrentCpuUsagePercent = testResult.CpuUsagePercent,
+                CurrentMemoryUsagePercent = testResult.MemoryUsagePercent,
+                
+                // Historical averages
+                HistoricalAverageResponseTimeMs = averageResponseTime,
+                HistoricalAverageErrorRatePercent = averageErrorRate,
+                HistoricalAverageRequestsPerSecond = averageThroughput,
+                HistoricalAverageCpuUsagePercent = averageCpuUsage,
+                HistoricalAverageMemoryUsagePercent = averageMemoryUsage,
+                
+                // Deviations
+                ResponseTimeDeviationPercent = responseTimeDeviation,
+                ErrorRateDeviationPercent = errorRateDeviation,
+                ThroughputDeviationPercent = throughputDeviation,
+                CpuUsageDeviationPercent = cpuUsageDeviation,
+                MemoryUsageDeviationPercent = memoryUsageDeviation,
+                OverallDeviationScore = overallDeviation,
+                
+                // Analysis results
+                TrendDirection = trendDirection,
+                ConfidenceLevel = CalculateConfidenceLevel(averageResponseTime, testResult.AverageResponseTimeMs),
+                Recommendations = recommendations
+            };
+
+            _logger.LogInformation("Average deviation analysis completed for {TestName}: Overall deviation {Deviation:F1}%", 
+                testResult.TestName, overallDeviation);
+
+            return analysis;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to analyze deviation from average for test: {TestName}", testResult.TestName);
+            return null;
         }
     }
 
@@ -336,6 +427,62 @@ public class TestResultHistoryService : ITestResultHistoryService
         if (recommendations.Count == 0)
         {
             recommendations.Add("Performance metrics are within normal ranges. Continue monitoring.");
+        }
+        
+        return recommendations;
+    }
+
+    /// <summary>
+    /// Generates recommendations based on average deviation analysis
+    /// </summary>
+    private List<string> GenerateAverageBasedRecommendations(TestResult testResult, double averageResponseTime, double averageErrorRate, double averageThroughput, double responseTimeDeviation, double errorRateDeviation, double throughputDeviation)
+    {
+        var recommendations = new List<string>();
+        
+        // Response time analysis
+        if (responseTimeDeviation > 30)
+        {
+            recommendations.Add($"Response time is {responseTimeDeviation:F1}% higher than average ({averageResponseTime:F1}ms vs {testResult.AverageResponseTimeMs:F1}ms). Consider investigating performance bottlenecks.");
+        }
+        else if (responseTimeDeviation < -20)
+        {
+            recommendations.Add($"Response time is {Math.Abs(responseTimeDeviation):F1}% better than average. Performance has improved significantly.");
+        }
+        
+        // Error rate analysis
+        if (errorRateDeviation > 50)
+        {
+            recommendations.Add($"Error rate is {errorRateDeviation:F1}% higher than average ({averageErrorRate:F1}% vs {testResult.ErrorRatePercent:F1}%). System stability may be compromised.");
+        }
+        else if (errorRateDeviation < -30)
+        {
+            recommendations.Add($"Error rate is {Math.Abs(errorRateDeviation):F1}% lower than average. System reliability has improved.");
+        }
+        
+        // Throughput analysis
+        if (throughputDeviation < -20)
+        {
+            recommendations.Add($"Throughput is {Math.Abs(throughputDeviation):F1}% lower than average ({averageThroughput:F1} req/s vs {testResult.RequestsPerSecond:F1} req/s). System capacity may be reduced.");
+        }
+        else if (throughputDeviation > 20)
+        {
+            recommendations.Add($"Throughput is {throughputDeviation:F1}% higher than average. System capacity has improved.");
+        }
+        
+        // Overall performance analysis
+        var overallDeviation = Math.Abs(responseTimeDeviation) + Math.Abs(errorRateDeviation) + Math.Abs(throughputDeviation);
+        if (overallDeviation > 100)
+        {
+            recommendations.Add("Overall performance shows significant deviation from historical average. Comprehensive investigation recommended.");
+        }
+        else if (overallDeviation < 20)
+        {
+            recommendations.Add("Performance is consistent with historical average. System is stable.");
+        }
+        
+        if (recommendations.Count == 0)
+        {
+            recommendations.Add("Performance metrics are within normal ranges compared to historical average. Continue monitoring.");
         }
         
         return recommendations;

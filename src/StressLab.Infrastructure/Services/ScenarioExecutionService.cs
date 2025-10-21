@@ -138,7 +138,161 @@ public class ScenarioExecutionService : IScenarioExecutionService
                 //     await _emailNotificationService.SendPerformanceAlertAsync(aggregatedResult.TestName, analysis, cancellationToken);
                 // }
                 
-                // ANALIZA ODCHYLENIA OD HISTORYCZNYCH LOGÓW W BAZIE DANYCH
+                // ANALIZA ODCHYLENIA OD ŚREDNIEJ WYKONANIA POPRZEDNICH TESTÓW O TEJ SAMEJ NAZWIE
+                try
+                {
+                    _logger.LogInformation("🔍 Analyzing deviation from average for scenario: {ScenarioName}", scenario.Name);
+                    var averageDeviationAnalysis = await _historyService.AnalyzeDeviationFromAverageAsync(aggregatedResult, cancellationToken: cancellationToken);
+                    
+                    if (averageDeviationAnalysis != null)
+                    {
+                        _logger.LogInformation("📊 Average deviation analysis completed for {ScenarioName}:", scenario.Name);
+                        _logger.LogInformation("   Overall Deviation: {OverallDeviation:F1}%", averageDeviationAnalysis.OverallDeviationScore);
+                        _logger.LogInformation("   Response Time Deviation: {ResponseTimeDeviation:F1}%", averageDeviationAnalysis.ResponseTimeDeviationPercent);
+                        _logger.LogInformation("   Error Rate Deviation: {ErrorRateDeviation:F1}%", averageDeviationAnalysis.ErrorRateDeviationPercent);
+                        _logger.LogInformation("   Throughput Deviation: {ThroughputDeviation:F1}%", averageDeviationAnalysis.ThroughputDeviationPercent);
+                        _logger.LogInformation("   CPU Usage Deviation: {CpuDeviation:F1}%", averageDeviationAnalysis.CpuUsageDeviationPercent);
+                        _logger.LogInformation("   Memory Usage Deviation: {MemoryDeviation:F1}%", averageDeviationAnalysis.MemoryUsageDeviationPercent);
+                        _logger.LogInformation("   Trend Direction: {TrendDirection}", averageDeviationAnalysis.TrendDirection);
+                        _logger.LogInformation("   Sample Size: {SampleSize}", averageDeviationAnalysis.SampleSize);
+                        
+                        // Log historical averages
+                        _logger.LogInformation("📈 Historical Averages:");
+                        _logger.LogInformation("   Response Time: {ResponseTime:F1}ms", averageDeviationAnalysis.HistoricalAverageResponseTimeMs);
+                        _logger.LogInformation("   Error Rate: {ErrorRate:F1}%", averageDeviationAnalysis.HistoricalAverageErrorRatePercent);
+                        _logger.LogInformation("   Throughput: {Throughput:F1} req/s", averageDeviationAnalysis.HistoricalAverageRequestsPerSecond);
+                        _logger.LogInformation("   CPU Usage: {CpuUsage:F1}%", averageDeviationAnalysis.HistoricalAverageCpuUsagePercent);
+                        _logger.LogInformation("   Memory Usage: {MemoryUsage:F1}%", averageDeviationAnalysis.HistoricalAverageMemoryUsagePercent);
+                        
+                        // Log current metrics
+                        _logger.LogInformation("📊 Current Metrics:");
+                        _logger.LogInformation("   Response Time: {ResponseTime:F1}ms", averageDeviationAnalysis.CurrentAverageResponseTimeMs);
+                        _logger.LogInformation("   Error Rate: {ErrorRate:F1}%", averageDeviationAnalysis.CurrentErrorRatePercent);
+                        _logger.LogInformation("   Throughput: {Throughput:F1} req/s", averageDeviationAnalysis.CurrentRequestsPerSecond);
+                        _logger.LogInformation("   CPU Usage: {CpuUsage:F1}%", averageDeviationAnalysis.CurrentCpuUsagePercent);
+                        _logger.LogInformation("   Memory Usage: {MemoryUsage:F1}%", averageDeviationAnalysis.CurrentMemoryUsagePercent);
+                        
+                        // Check for significant deviations and generate TODO comments
+                        if (averageDeviationAnalysis.OverallDeviationScore > 25)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - OGÓLNE ODCHYLENIE OD ŚREDNIEJ WYŻSZE NIŻ 25%
+                            // Test: {scenario.Name}
+                            // Ogólne odchylenie od średniej: {averageDeviationAnalysis.OverallDeviationScore:F1}%
+                            // Średnia historyczna: {averageDeviationAnalysis.HistoricalAverageResponseTimeMs:F1}ms response time, {averageDeviationAnalysis.HistoricalAverageErrorRatePercent:F1}% error rate
+                            // Aktualne: {averageDeviationAnalysis.CurrentAverageResponseTimeMs:F1}ms response time, {averageDeviationAnalysis.CurrentErrorRatePercent:F1}% error rate
+                            // Data analizy: {averageDeviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendAverageDeviationAlertAsync(
+                            //     scenario.Name,
+                            //     averageDeviationAnalysis.OverallDeviationScore,
+                            //     averageDeviationAnalysis.HistoricalAverageResponseTimeMs,
+                            //     averageDeviationAnalysis.CurrentAverageResponseTimeMs,
+                            //     averageDeviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("🚨 SIGNIFICANT DEVIATION FROM AVERAGE: {ScenarioName} - Overall deviation {Deviation:F1}% exceeds 25% threshold", 
+                                scenario.Name, averageDeviationAnalysis.OverallDeviationScore);
+                        }
+                        
+                        if (averageDeviationAnalysis.ResponseTimeDeviationPercent > 40)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - RESPONSE TIME ODCHYLENIE OD ŚREDNIEJ WYŻSZE NIŻ 40%
+                            // Test: {scenario.Name}
+                            // Response time odchylenie od średniej: {averageDeviationAnalysis.ResponseTimeDeviationPercent:F1}%
+                            // Średnia historyczna: {averageDeviationAnalysis.HistoricalAverageResponseTimeMs:F1}ms
+                            // Aktualne: {averageDeviationAnalysis.CurrentAverageResponseTimeMs:F1}ms
+                            // Data: {averageDeviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendResponseTimeAverageDeviationAlertAsync(
+                            //     scenario.Name,
+                            //     averageDeviationAnalysis.ResponseTimeDeviationPercent,
+                            //     averageDeviationAnalysis.HistoricalAverageResponseTimeMs,
+                            //     averageDeviationAnalysis.CurrentAverageResponseTimeMs,
+                            //     averageDeviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("⚠️ RESPONSE TIME DEVIATION FROM AVERAGE: {ScenarioName} - Response time deviation {Deviation:F1}% exceeds 40% threshold", 
+                                scenario.Name, averageDeviationAnalysis.ResponseTimeDeviationPercent);
+                        }
+                        
+                        if (averageDeviationAnalysis.ErrorRateDeviationPercent > 60)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - ERROR RATE ODCHYLENIE OD ŚREDNIEJ WYŻSZE NIŻ 60%
+                            // Test: {scenario.Name}
+                            // Error rate odchylenie od średniej: {averageDeviationAnalysis.ErrorRateDeviationPercent:F1}%
+                            // Średnia historyczna: {averageDeviationAnalysis.HistoricalAverageErrorRatePercent:F1}%
+                            // Aktualne: {averageDeviationAnalysis.CurrentErrorRatePercent:F1}%
+                            // Data: {averageDeviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendErrorRateAverageDeviationAlertAsync(
+                            //     scenario.Name,
+                            //     averageDeviationAnalysis.ErrorRateDeviationPercent,
+                            //     averageDeviationAnalysis.HistoricalAverageErrorRatePercent,
+                            //     averageDeviationAnalysis.CurrentErrorRatePercent,
+                            //     averageDeviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("🚨 ERROR RATE DEVIATION FROM AVERAGE: {ScenarioName} - Error rate deviation {Deviation:F1}% exceeds 60% threshold", 
+                                scenario.Name, averageDeviationAnalysis.ErrorRateDeviationPercent);
+                        }
+                        
+                        if (averageDeviationAnalysis.ThroughputDeviationPercent < -30)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - THROUGHPUT ODCHYLENIE OD ŚREDNIEJ NIŻSZE NIŻ -30%
+                            // Test: {scenario.Name}
+                            // Throughput odchylenie od średniej: {averageDeviationAnalysis.ThroughputDeviationPercent:F1}%
+                            // Średnia historyczna: {averageDeviationAnalysis.HistoricalAverageRequestsPerSecond:F1} req/s
+                            // Aktualne: {averageDeviationAnalysis.CurrentRequestsPerSecond:F1} req/s
+                            // Data: {averageDeviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendThroughputAverageDeviationAlertAsync(
+                            //     scenario.Name,
+                            //     averageDeviationAnalysis.ThroughputDeviationPercent,
+                            //     averageDeviationAnalysis.HistoricalAverageRequestsPerSecond,
+                            //     averageDeviationAnalysis.CurrentRequestsPerSecond,
+                            //     averageDeviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("⚠️ THROUGHPUT DEVIATION FROM AVERAGE: {ScenarioName} - Throughput deviation {Deviation:F1}% below -30% threshold", 
+                                scenario.Name, averageDeviationAnalysis.ThroughputDeviationPercent);
+                        }
+                        
+                        // Sprawdź czy są jakieś rekomendacje
+                        if (averageDeviationAnalysis.Recommendations != null && averageDeviationAnalysis.Recommendations.Count > 0)
+                        {
+                            var recommendationsText = string.Join("; ", averageDeviationAnalysis.Recommendations);
+                            _logger.LogInformation("💡 Recommendations for {ScenarioName}: {Recommendations}", 
+                                scenario.Name, recommendationsText);
+                            
+                            // TODO: WYŚLIJ ALERT EMAIL Z REKOMENDACJAMI NA PODSTAWIE ŚREDNIEJ
+                            // Test: {scenario.Name}
+                            // Rekomendacje: {recommendationsText}
+                            // Data: {averageDeviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendAverageBasedRecommendationsAlertAsync(
+                            //     scenario.Name,
+                            //     recommendationsText,
+                            //     averageDeviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogInformation("ℹ️ No historical data available for average deviation analysis of {ScenarioName}", scenario.Name);
+                    }
+                }
+                catch (Exception analysisEx)
+                {
+                    _logger.LogError(analysisEx, "❌ Failed to analyze deviation from average for scenario: {ScenarioName}", scenario.Name);
+                    // Nie rzucamy wyjątku tutaj, bo analiza odchylenia nie powinna przerywać wykonania scenariusza
+                }
+                
+                // ANALIZA ODCHYLENIA OD HISTORYCZNYCH LOGÓW W BAZIE DANYCH (STARA METODA)
                 try
                 {
                     _logger.LogInformation("🔍 Analyzing performance deviation for scenario: {ScenarioName}", scenario.Name);
