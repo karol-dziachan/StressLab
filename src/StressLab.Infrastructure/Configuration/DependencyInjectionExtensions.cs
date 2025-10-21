@@ -49,7 +49,16 @@ public static class DependencyInjectionExtensions
         services.AddSingleton<IReportService, ReportService>();
         services.AddSingleton<ISystemMetricsService, SystemMetricsService>();
         services.AddSingleton<IScenarioConfigurationService, ScenarioConfigurationService>();
-        services.AddSingleton<IScenarioExecutionService, ScenarioExecutionService>();
+        services.AddSingleton<IScenarioExecutionService>(provider =>
+        {
+            var logger = provider.GetRequiredService<ILogger<ScenarioExecutionService>>();
+            var scenarioConfigurationService = provider.GetRequiredService<IScenarioConfigurationService>();
+            var performanceTestService = provider.GetRequiredService<IPerformanceTestService>();
+            var systemMetricsService = provider.GetRequiredService<ISystemMetricsService>();
+            var historyService = provider.GetService<ITestResultHistoryService>();
+            
+            return new ScenarioExecutionService(logger, scenarioConfigurationService, performanceTestService, systemMetricsService, historyService);
+        });
         services.AddSingleton<IHttpClientConfigurationService, HttpClientConfigurationService>();
         services.AddSingleton<ITestResultHistoryService, TestResultHistoryService>();
         
@@ -94,7 +103,16 @@ public static class DependencyInjectionExtensions
         services.AddSingleton<IReportService, ReportService>();
         services.AddSingleton<ISystemMetricsService, SystemMetricsService>();
         services.AddSingleton<IScenarioConfigurationService, ScenarioConfigurationService>();
-        services.AddSingleton<IScenarioExecutionService, ScenarioExecutionService>();
+        services.AddSingleton<IScenarioExecutionService>(provider =>
+        {
+            var logger = provider.GetRequiredService<ILogger<ScenarioExecutionService>>();
+            var scenarioConfigurationService = provider.GetRequiredService<IScenarioConfigurationService>();
+            var performanceTestService = provider.GetRequiredService<IPerformanceTestService>();
+            var systemMetricsService = provider.GetRequiredService<ISystemMetricsService>();
+            var historyService = provider.GetService<ITestResultHistoryService>();
+            
+            return new ScenarioExecutionService(logger, scenarioConfigurationService, performanceTestService, systemMetricsService, historyService);
+        });
         services.AddSingleton<IHttpClientConfigurationService, HttpClientConfigurationService>();
         services.AddSingleton<ITestResultHistoryService, TestResultHistoryService>();
         

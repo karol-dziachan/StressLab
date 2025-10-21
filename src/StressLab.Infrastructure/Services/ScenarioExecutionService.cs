@@ -15,17 +15,20 @@ public class ScenarioExecutionService : IScenarioExecutionService
     private readonly IScenarioConfigurationService _scenarioConfigurationService;
     private readonly IPerformanceTestService _performanceTestService;
     private readonly ISystemMetricsService _systemMetricsService;
+    private readonly ITestResultHistoryService? _historyService;
 
     public ScenarioExecutionService(
         ILogger<ScenarioExecutionService> logger,
         IScenarioConfigurationService scenarioConfigurationService,
         IPerformanceTestService performanceTestService,
-        ISystemMetricsService systemMetricsService)
+        ISystemMetricsService systemMetricsService,
+        ITestResultHistoryService? historyService = null)
     {
         _logger = logger;
         _scenarioConfigurationService = scenarioConfigurationService;
         _performanceTestService = performanceTestService;
         _systemMetricsService = systemMetricsService;
+        _historyService = historyService;
     }
 
     public async Task<TestResult> ExecuteScenarioAsync(TestScenario scenario, CancellationToken cancellationToken = default)
@@ -114,6 +117,27 @@ public class ScenarioExecutionService : IScenarioExecutionService
 
         // Aggregate results from all steps into a single scenario result
         var aggregatedResult = AggregateScenarioResults(scenario, testResults, systemMetrics);
+
+        // Log scenario result to history if history service is available
+        if (_historyService is not null)
+        {
+            try
+            {
+                _logger.LogInformation("🔄 Logging scenario result to database: {ScenarioName}", scenario.Name);
+                await _historyService.LogTestResultAsync(aggregatedResult, cancellationToken);
+                _logger.LogInformation("✅ Scenario result successfully saved to database: {ScenarioName}", scenario.Name);
+            }
+            catch (Exception ex)
+            {
+                var errorMsg = $"❌ CRITICAL ERROR: Failed to save scenario result to database for scenario: {scenario.Name}";
+                _logger.LogError(ex, errorMsg);
+                throw new InvalidOperationException(errorMsg, ex);
+            }
+        }
+        else
+        {
+            _logger.LogWarning("⚠️ TestResultHistoryService is not registered - scenario results will not be saved to database");
+        }
 
         _logger.LogInformation("Scenario {ScenarioName} completed with status: {Status}", scenario.Name, aggregatedResult.Status);
         return aggregatedResult;
