@@ -61,10 +61,10 @@ public class ScenarioExecutionService : IScenarioExecutionService
                     StepType.SqlQuery => TestType.Sql,
                     _ => throw new DomainException($"Unsupported step type: {step.Type}")
                 },
-                ApiEndpoint = GetConfigurationValue(step.Configuration, "Url") ?? step.ApiEndpoint,
-                ApiMethod = GetConfigurationValue(step.Configuration, "Method") ?? step.ApiMethod,
-                SqlConnectionString = GetConfigurationValue(step.Configuration, "ConnectionString") ?? step.SqlConnectionString,
-                SqlProcedureName = GetConfigurationValue(step.Configuration, "ProcedureName") ?? step.SqlProcedureName
+                ApiEndpoint = GetConfigurationValue(step.Configuration, "Url") ?? step.ApiEndpoint ?? string.Empty,
+                ApiMethod = GetConfigurationValue(step.Configuration, "Method") ?? step.ApiMethod ?? string.Empty,
+                SqlConnectionString = GetConfigurationValue(step.Configuration, "ConnectionString") ?? step.SqlConnectionString ?? string.Empty,
+                SqlProcedureName = GetConfigurationValue(step.Configuration, "ProcedureName") ?? step.SqlProcedureName ?? string.Empty
             };
 
             if (step.IsCombinedWithPrevious && i > 0)
@@ -91,10 +91,10 @@ public class ScenarioExecutionService : IScenarioExecutionService
                     StepType.SqlQuery => TestType.Sql,
                     _ => throw new DomainException($"Unsupported step type: {previousStep.Type}")
                 },
-                    ApiEndpoint = GetConfigurationValue(previousStep.Configuration, "Url") ?? previousStep.ApiEndpoint,
-                    ApiMethod = GetConfigurationValue(previousStep.Configuration, "Method") ?? previousStep.ApiMethod,
-                    SqlConnectionString = GetConfigurationValue(previousStep.Configuration, "ConnectionString") ?? previousStep.SqlConnectionString,
-                    SqlProcedureName = GetConfigurationValue(previousStep.Configuration, "ProcedureName") ?? previousStep.SqlProcedureName
+                    ApiEndpoint = GetConfigurationValue(previousStep.Configuration, "Url") ?? previousStep.ApiEndpoint ?? string.Empty,
+                    ApiMethod = GetConfigurationValue(previousStep.Configuration, "Method") ?? previousStep.ApiMethod ?? string.Empty,
+                    SqlConnectionString = GetConfigurationValue(previousStep.Configuration, "ConnectionString") ?? previousStep.SqlConnectionString ?? string.Empty,
+                    SqlProcedureName = GetConfigurationValue(previousStep.Configuration, "ProcedureName") ?? previousStep.SqlProcedureName ?? string.Empty
                 };
                 
                 currentResult = await _performanceTestService.ExecuteCombinedTestAsync(testConfig, cancellationToken);
@@ -118,6 +118,8 @@ public class ScenarioExecutionService : IScenarioExecutionService
         // Aggregate results from all steps into a single scenario result
         var aggregatedResult = AggregateScenarioResults(scenario, testResults, systemMetrics);
 
+        _logger.LogInformation("Scenario {ScenarioName} completed with status: {Status}", scenario.Name, aggregatedResult.Status);
+        
         // Log scenario result to history if history service is available
         if (_historyService is not null)
         {
@@ -126,6 +128,166 @@ public class ScenarioExecutionService : IScenarioExecutionService
                 _logger.LogInformation("🔄 Logging scenario result to database: {ScenarioName}", scenario.Name);
                 await _historyService.LogTestResultAsync(aggregatedResult, cancellationToken);
                 _logger.LogInformation("✅ Scenario result successfully saved to database: {ScenarioName}", scenario.Name);
+                
+                // TODO: Check for performance deviations and send alerts
+                // After logging to history, analyze deviations and send email alerts if needed
+                // Example integration:
+                // var analysis = await _historyService.AnalyzePerformanceDeviationAsync(aggregatedResult, cancellationToken: cancellationToken);
+                // if (analysis is not null && (analysis.OverallDeviationScore > 20 || analysis.TrendDirection == TrendDirection.Degrading))
+                // {
+                //     await _emailNotificationService.SendPerformanceAlertAsync(aggregatedResult.TestName, analysis, cancellationToken);
+                // }
+                
+                // ANALIZA ODCHYLENIA OD HISTORYCZNYCH LOGÓW W BAZIE DANYCH
+                try
+                {
+                    _logger.LogInformation("🔍 Analyzing performance deviation for scenario: {ScenarioName}", scenario.Name);
+                    var deviationAnalysis = await _historyService.AnalyzePerformanceDeviationAsync(aggregatedResult, cancellationToken: cancellationToken);
+                    
+                    if (deviationAnalysis != null)
+                    {
+                        _logger.LogInformation("📊 Deviation analysis completed for {ScenarioName}:", scenario.Name);
+                        _logger.LogInformation("   Overall Deviation: {OverallDeviation:F1}%", deviationAnalysis.OverallDeviationScore);
+                        _logger.LogInformation("   Response Time Deviation: {ResponseTimeDeviation:F1}%", deviationAnalysis.ResponseTimeDeviationPercent);
+                        _logger.LogInformation("   Error Rate Deviation: {ErrorRateDeviation:F1}%", deviationAnalysis.ErrorRateDeviationPercent);
+                        _logger.LogInformation("   Throughput Deviation: {ThroughputDeviation:F1}%", deviationAnalysis.ThroughputDeviationPercent);
+                        _logger.LogInformation("   Trend Direction: {TrendDirection}", deviationAnalysis.TrendDirection);
+                        
+                        // TODO: Sprawdź czy odchylenie jest większe niż próg i wyślij alert
+                        // Próg odchylenia: 20% dla ogólnego odchylenia, 30% dla response time, 50% dla error rate
+                        if (deviationAnalysis.OverallDeviationScore > 20)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - OGÓLNE ODCHYLENIE WYŻSZE NIŻ 20%
+                            // Test: {scenario.Name}
+                            // Ogólne odchylenie: {deviationAnalysis.OverallDeviationScore:F1}%
+                            // Data analizy: {deviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendCriticalPerformanceAlertAsync(
+                            //     scenario.Name,
+                            //     deviationAnalysis.OverallDeviationScore,
+                            //     deviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("🚨 CRITICAL DEVIATION: {ScenarioName} - Overall deviation {Deviation:F1}% exceeds 20% threshold", 
+                                scenario.Name, deviationAnalysis.OverallDeviationScore);
+                        }
+                        
+                        if (deviationAnalysis.ResponseTimeDeviationPercent > 30)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - RESPONSE TIME DEGRADACJA WYŻSZA NIŻ 30%
+                            // Test: {scenario.Name}
+                            // Response time odchylenie: {deviationAnalysis.ResponseTimeDeviationPercent:F1}%
+                            // Baseline: {deviationAnalysis.BaselineAverageResponseTimeMs:F1}ms
+                            // Aktualne: {deviationAnalysis.CurrentAverageResponseTimeMs:F1}ms
+                            // Data: {deviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendResponseTimeAlertAsync(
+                            //     scenario.Name,
+                            //     deviationAnalysis.ResponseTimeDeviationPercent,
+                            //     deviationAnalysis.BaselineAverageResponseTimeMs,
+                            //     deviationAnalysis.CurrentAverageResponseTimeMs,
+                            //     deviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("⚠️ RESPONSE TIME DEGRADATION: {ScenarioName} - Response time deviation {Deviation:F1}% exceeds 30% threshold", 
+                                scenario.Name, deviationAnalysis.ResponseTimeDeviationPercent);
+                        }
+                        
+                        if (deviationAnalysis.ErrorRateDeviationPercent > 50)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - ERROR RATE SPIKE WYŻSZY NIŻ 50%
+                            // Test: {scenario.Name}
+                            // Error rate odchylenie: {deviationAnalysis.ErrorRateDeviationPercent:F1}%
+                            // Baseline: {deviationAnalysis.BaselineErrorRatePercent:F1}%
+                            // Aktualne: {deviationAnalysis.CurrentErrorRatePercent:F1}%
+                            // Data: {deviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendErrorRateAlertAsync(
+                            //     scenario.Name,
+                            //     deviationAnalysis.ErrorRateDeviationPercent,
+                            //     deviationAnalysis.BaselineErrorRatePercent,
+                            //     deviationAnalysis.CurrentErrorRatePercent,
+                            //     deviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("🚨 ERROR RATE SPIKE: {ScenarioName} - Error rate deviation {Deviation:F1}% exceeds 50% threshold", 
+                                scenario.Name, deviationAnalysis.ErrorRateDeviationPercent);
+                        }
+                        
+                        if (deviationAnalysis.ThroughputDeviationPercent < -20)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - THROUGHPUT DEGRADACJA NIŻSZA NIŻ -20%
+                            // Test: {scenario.Name}
+                            // Throughput odchylenie: {deviationAnalysis.ThroughputDeviationPercent:F1}%
+                            // Baseline: {deviationAnalysis.BaselineRequestsPerSecond:F1} req/s
+                            // Aktualne: {deviationAnalysis.CurrentRequestsPerSecond:F1} req/s
+                            // Data: {deviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendThroughputAlertAsync(
+                            //     scenario.Name,
+                            //     deviationAnalysis.ThroughputDeviationPercent,
+                            //     deviationAnalysis.BaselineRequestsPerSecond,
+                            //     deviationAnalysis.CurrentRequestsPerSecond,
+                            //     deviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("⚠️ THROUGHPUT DEGRADATION: {ScenarioName} - Throughput deviation {Deviation:F1}% below -20% threshold", 
+                                scenario.Name, deviationAnalysis.ThroughputDeviationPercent);
+                        }
+                        
+                        if (deviationAnalysis.TrendDirection == TrendDirection.Degrading)
+                        {
+                            // TODO: WYŚLIJ ALERT EMAIL - TREND DEGRADACJI
+                            // Test: {scenario.Name}
+                            // Trend: Degrading
+                            // Ogólne odchylenie: {deviationAnalysis.OverallDeviationScore:F1}%
+                            // Data: {deviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendTrendAlertAsync(
+                            //     scenario.Name,
+                            //     TrendDirection.Degrading,
+                            //     deviationAnalysis.OverallDeviationScore,
+                            //     deviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                            
+                            _logger.LogWarning("📉 DEGRADING TREND: {ScenarioName} - Performance is degrading over time", scenario.Name);
+                        }
+                        
+                        // Sprawdź czy są jakieś rekomendacje
+                        if (deviationAnalysis.Recommendations != null && deviationAnalysis.Recommendations.Count > 0)
+                        {
+                            var recommendationsText = string.Join("; ", deviationAnalysis.Recommendations);
+                            _logger.LogInformation("💡 Recommendations for {ScenarioName}: {Recommendations}", 
+                                scenario.Name, recommendationsText);
+                            
+                            // TODO: WYŚLIJ ALERT EMAIL Z REKOMENDACJAMI
+                            // Test: {scenario.Name}
+                            // Rekomendacje: {recommendationsText}
+                            // Data: {deviationAnalysis.AnalysisDate:yyyy-MM-dd HH:mm:ss}
+                            // 
+                            // Przykład integracji:
+                            // await _emailNotificationService.SendRecommendationsAlertAsync(
+                            //     scenario.Name,
+                            //     recommendationsText,
+                            //     deviationAnalysis.AnalysisDate,
+                            //     cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogInformation("ℹ️ No historical data available for deviation analysis of {ScenarioName}", scenario.Name);
+                    }
+                }
+                catch (Exception analysisEx)
+                {
+                    _logger.LogError(analysisEx, "❌ Failed to analyze performance deviation for scenario: {ScenarioName}", scenario.Name);
+                    // Nie rzucamy wyjątku tutaj, bo analiza odchylenia nie powinna przerywać wykonania scenariusza
+                }
             }
             catch (Exception ex)
             {
@@ -138,8 +300,7 @@ public class ScenarioExecutionService : IScenarioExecutionService
         {
             _logger.LogWarning("⚠️ TestResultHistoryService is not registered - scenario results will not be saved to database");
         }
-
-        _logger.LogInformation("Scenario {ScenarioName} completed with status: {Status}", scenario.Name, aggregatedResult.Status);
+        
         return aggregatedResult;
     }
 
