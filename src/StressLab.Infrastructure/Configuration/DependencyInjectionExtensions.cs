@@ -9,6 +9,7 @@ using StressLab.Core.Interfaces.Repositories;
 using StressLab.Core.Interfaces.Services;
 using StressLab.Infrastructure.Repositories;
 using StressLab.Infrastructure.Services;
+using StressLab.Infrastructure.Configuration;
 
 namespace StressLab.Infrastructure.Configuration;
 
@@ -31,7 +32,7 @@ public static class DependencyInjectionExtensions
         // Register repositories
         services.AddSingleton<ITestConfigurationRepository, InMemoryTestConfigurationRepository>();
         services.AddSingleton<ITestResultRepository, InMemoryTestResultRepository>();
-        services.AddScoped<ITestResultHistoryRepository, SqlServerTestResultHistoryRepository>();
+        services.AddSingleton<ITestResultHistoryRepository, SqlServerTestResultHistoryRepository>();
         
         // Register services
         services.AddSingleton<IPerformanceTestService>(provider =>
