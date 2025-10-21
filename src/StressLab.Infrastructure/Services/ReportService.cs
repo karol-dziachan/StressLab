@@ -12,10 +12,18 @@ namespace StressLab.Infrastructure.Services;
 public class ReportService : IReportService
 {
     private readonly ILogger<ReportService> _logger;
+    private readonly ITestResultHistoryService? _historyService;
 
     public ReportService(ILogger<ReportService> logger)
     {
         _logger = logger;
+        _historyService = null;
+    }
+
+    public ReportService(ILogger<ReportService> logger, ITestResultHistoryService historyService)
+    {
+        _logger = logger;
+        _historyService = historyService;
     }
 
     public async Task<string> GenerateHtmlReportAsync(TestResult result, string outputPath, CancellationToken cancellationToken = default)
@@ -24,7 +32,7 @@ public class ReportService : IReportService
 
         try
         {
-            var htmlContent = GenerateHtmlContent(result);
+            var htmlContent = await GenerateHtmlContent(result);
             var fileName = $"test_report_{result.Id:N}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.html";
             var fullPath = Path.Combine(outputPath, fileName);
 
@@ -115,7 +123,7 @@ public class ReportService : IReportService
         }
     }
 
-    private string GenerateHtmlContent(TestResult result)
+    private async Task<string> GenerateHtmlContent(TestResult result)
     {
         var html = new StringBuilder();
         
@@ -214,10 +222,70 @@ public class ReportService : IReportService
         html.AppendLine($"        <div class=\"impact-level impact-{result.PerformanceImpact.ToString().ToLower()}\">");
         html.AppendLine($"            <h3>{result.PerformanceImpact}</h3>");
         html.AppendLine("        </div>");
+        
+        // Historical Analysis (if available)
+        if (_historyService is not null)
+        {
+            try
+            {
+                var analysis = await _historyService.AnalyzePerformanceDeviationAsync(result, cancellationToken: CancellationToken.None);
+                if (analysis is not null)
+                {
+                    html.AppendLine("        <div class=\"historical-analysis\">");
+                    html.AppendLine("            <h3>📊 Historical Performance Analysis</h3>");
+                    html.AppendLine($"            <div class=\"analysis-summary\">");
+                    html.AppendLine($"                <div class=\"analysis-metric\">");
+                    html.AppendLine($"                    <span class=\"metric-label\">Overall Deviation:</span>");
+                    html.AppendLine($"                    <span class=\"metric-value {(analysis.OverallDeviationScore > 0 ? "degraded" : "improved")}\">{analysis.OverallDeviationScore:F1}%</span>");
+                    html.AppendLine($"                </div>");
+                    html.AppendLine($"                <div class=\"analysis-metric\">");
+                    html.AppendLine($"                    <span class=\"metric-label\">Response Time Change:</span>");
+                    html.AppendLine($"                    <span class=\"metric-value {(analysis.ResponseTimeDeviationPercent > 0 ? "degraded" : "improved")}\">{analysis.ResponseTimeDeviationPercent:F1}%</span>");
+                    html.AppendLine($"                </div>");
+                    html.AppendLine($"                <div class=\"analysis-metric\">");
+                    html.AppendLine($"                    <span class=\"metric-label\">Error Rate Change:</span>");
+                    html.AppendLine($"                    <span class=\"metric-value {(analysis.ErrorRateDeviationPercent > 0 ? "degraded" : "improved")}\">{analysis.ErrorRateDeviationPercent:F1}%</span>");
+                    html.AppendLine($"                </div>");
+                    html.AppendLine($"                <div class=\"analysis-metric\">");
+                    html.AppendLine($"                    <span class=\"metric-label\">Throughput Change:</span>");
+                    html.AppendLine($"                    <span class=\"metric-value {(analysis.ThroughputDeviationPercent > 0 ? "improved" : "degraded")}\">{analysis.ThroughputDeviationPercent:F1}%</span>");
+                    html.AppendLine($"                </div>");
+                    html.AppendLine($"                <div class=\"analysis-metric\">");
+                    html.AppendLine($"                    <span class=\"metric-label\">Trend:</span>");
+                    html.AppendLine($"                    <span class=\"metric-value trend-{analysis.TrendDirection.ToString().ToLower()}\">{analysis.TrendDirection}</span>");
+                    html.AppendLine($"                </div>");
+                    html.AppendLine($"                <div class=\"analysis-metric\">");
+                    html.AppendLine($"                    <span class=\"metric-label\">Confidence:</span>");
+                    html.AppendLine($"                    <span class=\"metric-value\">{analysis.ConfidenceLevel:F1}%</span>");
+                    html.AppendLine($"                </div>");
+                    html.AppendLine($"            </div>");
+                    
+                    if (analysis.Recommendations.Any())
+                    {
+                        html.AppendLine("            <div class=\"recommendations\">");
+                        html.AppendLine("                <h4>💡 Recommendations</h4>");
+                        html.AppendLine("                <ul>");
+                        foreach (var recommendation in analysis.Recommendations)
+                        {
+                            html.AppendLine($"                    <li>{recommendation}</li>");
+                        }
+                        html.AppendLine("                </ul>");
+                        html.AppendLine("            </div>");
+                    }
+                    
+                    html.AppendLine("        </div>");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate historical analysis for report");
+            }
+        }
+        
         if (!string.IsNullOrEmpty(result.Notes))
         {
             html.AppendLine("        <div class=\"notes\">");
-            html.AppendLine($"            <h4>Notes</h4>");
+            html.AppendLine("            <h4>Notes</h4>");
             html.AppendLine($"            <p>{result.Notes}</p>");
             html.AppendLine("        </div>");
         }
@@ -393,6 +461,94 @@ public class ReportService : IReportService
         .notes p {
             margin: 0;
             line-height: 1.6;
+        }
+        
+        .historical-analysis {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            margin-top: 20px;
+        }
+        
+        .historical-analysis h3 {
+            margin: 0 0 15px 0;
+            color: #667eea;
+        }
+        
+        .analysis-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .analysis-metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .analysis-metric .metric-label {
+            font-weight: 500;
+            color: #666;
+        }
+        
+        .analysis-metric .metric-value {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .metric-value.improved {
+            background-color: #e8f5e8;
+            color: #2e7d32;
+        }
+        
+        .metric-value.degraded {
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+        
+        .trend-improving {
+            background-color: #e8f5e8;
+            color: #2e7d32;
+        }
+        
+        .trend-degrading {
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+        
+        .trend-stable {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .recommendations {
+            background-color: #fff3e0;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #ff9800;
+        }
+        
+        .recommendations h4 {
+            margin: 0 0 10px 0;
+            color: #f57c00;
+        }
+        
+        .recommendations ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .recommendations li {
+            margin-bottom: 5px;
+            line-height: 1.5;
         }
         ";
     }

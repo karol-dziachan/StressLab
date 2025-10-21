@@ -92,3 +92,68 @@ public interface ITestResultRepository
     Task<TestResult> UpdateAsync(TestResult result, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Repository interface for managing test result history
+/// </summary>
+public interface ITestResultHistoryRepository
+{
+    /// <summary>
+    /// Gets all historical test results
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Collection of historical test results</returns>
+    Task<IEnumerable<TestResultHistory>> GetAllAsync(CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Gets historical test results by test name
+    /// </summary>
+    /// <param name="testName">Test name</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Collection of historical test results</returns>
+    Task<IEnumerable<TestResultHistory>> GetByTestNameAsync(string testName, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Gets historical test results by test name within date range
+    /// </summary>
+    /// <param name="testName">Test name</param>
+    /// <param name="fromDate">Start date</param>
+    /// <param name="toDate">End date</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Collection of historical test results</returns>
+    Task<IEnumerable<TestResultHistory>> GetByTestNameAndDateRangeAsync(string testName, DateTime fromDate, DateTime toDate, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Gets recent historical test results for a test name
+    /// </summary>
+    /// <param name="testName">Test name</param>
+    /// <param name="count">Number of recent results to retrieve</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Collection of recent historical test results</returns>
+    Task<IEnumerable<TestResultHistory>> GetRecentByTestNameAsync(string testName, int count, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Creates a new historical test result record
+    /// </summary>
+    /// <param name="history">Historical result to create</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Created historical result</returns>
+    Task<TestResultHistory> CreateAsync(TestResultHistory history, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Gets baseline statistics for a test name (average of recent successful tests)
+    /// </summary>
+    /// <param name="testName">Test name</param>
+    /// <param name="sampleSize">Number of recent tests to use for baseline</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Baseline statistics or null if insufficient data</returns>
+    Task<TestResultHistory?> GetBaselineAsync(string testName, int sampleSize = 10, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Deletes old historical records beyond specified retention period
+    /// </summary>
+    /// <param name="retentionDays">Number of days to retain</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Number of records deleted</returns>
+    Task<int> CleanupOldRecordsAsync(int retentionDays = 90, CancellationToken cancellationToken = default);
+}
+

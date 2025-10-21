@@ -21,6 +21,8 @@ public class PerformanceTestService : IPerformanceTestService
     private readonly HttpClient _httpClient;
     private readonly ISystemMetricsService _systemMetricsService;
     private readonly IHttpClientConfigurationService _httpClientConfigService;
+    private readonly FailCriteriaOptions _failCriteria;
+    private readonly ITestResultHistoryService? _historyService;
 
     public PerformanceTestService(
         ILogger<PerformanceTestService> logger,
@@ -32,6 +34,39 @@ public class PerformanceTestService : IPerformanceTestService
         _httpClient = httpClient;
         _systemMetricsService = systemMetricsService;
         _httpClientConfigService = httpClientConfigService;
+        _failCriteria = new FailCriteriaOptions();
+        _historyService = null;
+    }
+
+    public PerformanceTestService(
+        ILogger<PerformanceTestService> logger,
+        HttpClient httpClient,
+        ISystemMetricsService systemMetricsService,
+        IHttpClientConfigurationService httpClientConfigService,
+        FailCriteriaOptions failCriteriaOptions)
+    {
+        _logger = logger;
+        _httpClient = httpClient;
+        _systemMetricsService = systemMetricsService;
+        _httpClientConfigService = httpClientConfigService;
+        _failCriteria = failCriteriaOptions ?? new FailCriteriaOptions();
+        _historyService = null;
+    }
+
+    public PerformanceTestService(
+        ILogger<PerformanceTestService> logger,
+        HttpClient httpClient,
+        ISystemMetricsService systemMetricsService,
+        IHttpClientConfigurationService httpClientConfigService,
+        FailCriteriaOptions failCriteriaOptions,
+        ITestResultHistoryService historyService)
+    {
+        _logger = logger;
+        _httpClient = httpClient;
+        _systemMetricsService = systemMetricsService;
+        _httpClientConfigService = httpClientConfigService;
+        _failCriteria = failCriteriaOptions ?? new FailCriteriaOptions();
+        _historyService = historyService;
     }
 
     public async Task<TestResult> ExecuteTestAsync(TestConfiguration configuration, CancellationToken cancellationToken = default)
@@ -50,6 +85,30 @@ public class PerformanceTestService : IPerformanceTestService
                 TestType.Combined => await ExecuteCombinedTestAsync(configuration, cancellationToken),
                 _ => throw new InvalidOperationException($"Unsupported test type: {configuration.TestType}")
             };
+
+            // Log test result to history if history service is available
+            if (_historyService is not null)
+            {
+                try
+                {
+                    await _historyService.LogTestResultAsync(result, cancellationToken);
+                    _logger.LogInformation("Test result logged to history: {TestName}", configuration.Name);
+                    
+                    // TODO: Check for performance deviations and send alerts
+                    // After logging to history, analyze deviations and send email alerts if needed
+                    // Example integration:
+                    // var analysis = await _historyService.AnalyzePerformanceDeviationAsync(result, cancellationToken: cancellationToken);
+                    // if (analysis is not null && (analysis.OverallDeviationScore > 20 || analysis.TrendDirection == TrendDirection.Degrading))
+                    // {
+                    //     await _emailNotificationService.SendPerformanceAlertAsync(result.TestName, analysis, cancellationToken);
+                    // }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to log test result to history: {TestName}", configuration.Name);
+                    // Don't fail the test if history logging fails
+                }
+            }
 
             _logger.LogInformation("Performance test completed successfully: {TestName}", configuration.Name);
             return result;
@@ -247,9 +306,7 @@ public class PerformanceTestService : IPerformanceTestService
         var p95ResponseTimeMs = responseTimesMs.Any() ? Percentile(responseTimesMs, 0.95) : averageResponseTimeMs * 1.5;
         var p99ResponseTimeMs = responseTimesMs.Any() ? Percentile(responseTimesMs, 0.99) : averageResponseTimeMs * 2.0;
 
-        var status = errorRatePercent <= configuration.MaxErrorRatePercent 
-            ? TestStatus.Completed 
-            : TestStatus.Failed;
+        var status = DetermineStatus(configuration, averageResponseTimeMs, p95ResponseTimeMs, p99ResponseTimeMs, requestsPerSecond, errorRatePercent);
 
         var performanceImpact = DeterminePerformanceImpact(averageResponseTimeMs, configuration.ExpectedResponseTimeMs, errorRatePercent);
 
@@ -293,9 +350,7 @@ public class PerformanceTestService : IPerformanceTestService
 
         var averageResponseTimeMs = 200.0; // Simplified for SQL operations
 
-        var status = errorRatePercent <= configuration.MaxErrorRatePercent 
-            ? TestStatus.Completed 
-            : TestStatus.Failed;
+        var status = DetermineStatus(configuration, averageResponseTimeMs, averageResponseTimeMs * 1.5, averageResponseTimeMs * 2.0, requestsPerSecond, errorRatePercent);
 
         var performanceImpact = DeterminePerformanceImpact(averageResponseTimeMs, configuration.ExpectedResponseTimeMs, errorRatePercent);
 
@@ -340,9 +395,7 @@ public class PerformanceTestService : IPerformanceTestService
         var p95ResponseTimeMs = responseTimesMs.Any() ? Percentile(responseTimesMs, 0.95) : averageResponseTimeMs * 1.5;
         var p99ResponseTimeMs = responseTimesMs.Any() ? Percentile(responseTimesMs, 0.99) : averageResponseTimeMs * 2.0;
 
-        var status = errorRatePercent <= configuration.MaxErrorRatePercent 
-            ? TestStatus.Completed 
-            : TestStatus.Failed;
+        var status = DetermineStatus(configuration, averageResponseTimeMs, p95ResponseTimeMs, p99ResponseTimeMs, requestsPerSecond, errorRatePercent);
 
         var performanceImpact = DeterminePerformanceImpact(averageResponseTimeMs, configuration.ExpectedResponseTimeMs, errorRatePercent);
 
@@ -389,6 +442,25 @@ public class PerformanceTestService : IPerformanceTestService
             return PerformanceImpactLevel.Minor;
         
         return PerformanceImpactLevel.None;
+    }
+
+    private TestStatus DetermineStatus(TestConfiguration configuration,
+        double avgMs, double p95Ms, double p99Ms, double rps, double errorRatePercent)
+    {
+        var maxError = _failCriteria.MaxErrorRatePercent ?? configuration.MaxErrorRatePercent;
+        var maxAvg = _failCriteria.MaxAverageResponseTimeMs ?? configuration.ExpectedResponseTimeMs;
+        var maxP95 = _failCriteria.MaxP95ResponseTimeMs ?? (maxAvg * 1.5);
+        var maxP99 = _failCriteria.MaxP99ResponseTimeMs ?? (maxAvg * 2.0);
+        var minRps = _failCriteria.MinRequestsPerSecond; // optional
+
+        var fails = false;
+        if (errorRatePercent > maxError) fails = true;
+        if (avgMs > maxAvg) fails = true;
+        if (p95Ms > maxP95) fails = true;
+        if (p99Ms > maxP99) fails = true;
+        if (minRps is not null && rps < minRps) fails = true;
+
+        return fails ? TestStatus.Failed : TestStatus.Completed;
     }
 
     private static double Percentile(List<double> sequence, double percentile)
